@@ -5,7 +5,7 @@
 
 **Course**: SC6107 — Blockchain Technology · NTU CCDS
 **Group**: 1
-**Status**: Active development (Apr–May 2026)
+**Status**: Active development (Apr 2026 – May 23, 2026)
 
 ---
 
