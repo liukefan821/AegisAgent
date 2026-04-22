@@ -202,4 +202,4 @@ Response (JSON):
 
 ---
 
-*Questions / feedback → WeChat me. Changes to this document must be announced in the group chat.*
+*Questions / feedback → WeChat me anytime. Let's keep each other in the loop if this doc changes.*
