@@ -20,7 +20,7 @@ See `docs/architecture/` for the full system design and `docs/proposal.pdf` for 
 | Member | Module | Path |
 |---|---|---|
 | HE Huzhengxiong | DevOps · Testing · Delivery | `.github/workflows/` `scripts/` |
-| **LIU Kefan** | **Architecture · TEE Agent · Interface** | **`tee-agent/` `integration/` `docs/`** |
+| LIU Kefan | Architecture · TEE Agent · Interface | `tee-agent/` `integration/` `docs/` |
 | ZHOU Congxiang | Frontend (Next.js + RainbowKit) | `frontend/` |
 | ZHU Ruiqi | Smart Contracts (Solidity + Hardhat) | `contracts/` |
 
