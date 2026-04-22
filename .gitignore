@@ -1,0 +1,36 @@
+# Node
+node_modules/
+.next/
+out/
+*.log
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Solidity / Hardhat / Foundry
+artifacts/
+cache/
+typechain-types/
+coverage/
+coverage.json
+broadcast/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Secrets
+*.pem
+*.key
+secrets/

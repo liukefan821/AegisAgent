@@ -1,0 +1,11 @@
+# Default reviewer: tech lead
+*                    @liukefan821
+
+# Module owners — replace <...> placeholders once GitHub usernames are collected
+/contracts/          @<zhu-ruiqi-github>
+/frontend/           @<zhou-congxiang-github>
+/tee-agent/          @liukefan821
+/integration/        @liukefan821
+/docs/               @liukefan821
+/scripts/            @<he-huzhengxiong-github>
+/.github/            @<he-huzhengxiong-github>
