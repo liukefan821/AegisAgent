@@ -30,6 +30,16 @@ export type Bytes32 = `0x${string}`;
 export interface AttestationQuote {
   quote_hex: string;
   report_data: Hex;
+  /**
+   * First 32 bytes of report_data. Pre-split server-side by tee-agent's
+   * `GET /quotes/{digest}` endpoint so the frontend doesn't slice bytes itself.
+   */
+  input_hash: Hex;
+  /**
+   * Last 32 bytes of report_data. Pre-split server-side by tee-agent's
+   * `GET /quotes/{digest}` endpoint.
+   */
+  output_hash: Hex;
   mr_enclave: string;
   timestamp: number;
   is_mock: boolean;
@@ -60,14 +70,16 @@ export interface PriceData {
 }
 
 /**
- * **Speculative** — `/health` endpoint not yet implemented in tee-agent.
+ * Confirmed schema after tee-agent PR #6 (FastAPI HTTP server).
+ * - `status`: "alive" iff `ollama_status === "ready"`, else "degraded".
+ * - `last_quote_generated_at`: 0 if no quote has been generated yet.
  */
 export interface HealthResponse {
-  status: "alive" | "degraded" | "down";
+  status: "alive" | "degraded";
   enclave_image_hash: string;
-  last_quote_generated_at: number | null;
+  last_quote_generated_at: number;
   ollama_model: string;
-  ollama_status: "ready" | "loading" | "down";
+  ollama_status: "ready" | "unreachable";
 }
 
 // ────────────────────────────────────────────────────────────────────
