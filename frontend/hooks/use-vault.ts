@@ -1,7 +1,7 @@
 "use client";
 
 import { useReadContract } from "wagmi";
-import { CONTRACTS, vaultAbi } from "@/lib/contracts";
+import { CONTRACTS, vaultAbi, isConfigured } from "@/lib/contracts";
 import { IS_MOCK, MOCK_VAULT_BALANCE, MOCK_NONCE } from "@/lib/mocks";
 import type { Address, HookResult } from "@/lib/types";
 
@@ -11,7 +11,7 @@ export function useVaultBalance(user?: Address): HookResult<bigint> {
     abi: vaultAbi,
     functionName: "balanceOf",
     args: user ? [user] : undefined,
-    query: { enabled: !IS_MOCK && !!user },
+    query: { enabled: !IS_MOCK && !!user && isConfigured(CONTRACTS.vault) },
   });
 
   if (IS_MOCK) {
@@ -37,7 +37,7 @@ export function useUserNonce(user?: Address): HookResult<bigint> {
     abi: vaultAbi,
     functionName: "nonceOf",
     args: user ? [user] : undefined,
-    query: { enabled: !IS_MOCK && !!user },
+    query: { enabled: !IS_MOCK && !!user && isConfigured(CONTRACTS.vault) },
   });
 
   if (IS_MOCK) {

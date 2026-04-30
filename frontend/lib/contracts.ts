@@ -136,6 +136,10 @@ export const vaultAbi = [
   },
 ] as const;
 
+export function isConfigured(address: Address): boolean {
+  return address !== "0x0000000000000000000000000000000000000000";
+}
+
 export const verifierAbi = [
   {
     type: "event",

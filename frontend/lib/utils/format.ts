@@ -1,8 +1,9 @@
+import { formatEther } from "viem";
 import type { Hex } from "@/lib/types";
 
 export function ensureHex(s: string): Hex {
   const normalized = s.startsWith("0x") ? s : `0x${s}`;
-  if (!/^0x[0-9a-fA-F]*$/.test(normalized)) {
+  if (!/^0x[0-9a-fA-F]+$/.test(normalized)) {
     throw new Error(`Invalid hex string: ${s}`);
   }
   return normalized as Hex;
@@ -19,6 +20,7 @@ export function formatTimestamp(unixSeconds: number | bigint): string {
 }
 
 export function formatEth(wei: bigint, decimals: number = 4): string {
-  const eth = Number(wei) / 1e18;
-  return eth.toFixed(decimals);
+  const formatted = formatEther(wei);
+  const num = parseFloat(formatted);
+  return num.toFixed(decimals);
 }

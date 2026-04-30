@@ -57,9 +57,9 @@ export const MOCK_LLM_RESPONSE: LLMResponse = {
 
 export const MOCK_PRICE_DATA: PriceData = {
   price: "3245.18",
-  round_id: 18446744073709553817,
+  round_id: BigInt("18446744073709553817"),
   updated_at: NOW - 120,
-  answered_in_round: 18446744073709553817,
+  answered_in_round: BigInt("18446744073709553817"),
   feed_address: "0x694AA1769357215DE4FAC081bf1f309aDC325306",
   decimals: 8,
   description: "ETH / USD",

@@ -49,9 +49,9 @@ export interface LLMResponse {
 /** Mirror of `chainlink_feed.PriceData`. */
 export interface PriceData {
   price: string;
-  round_id: number;
+  round_id: bigint;
   updated_at: number;
-  answered_in_round: number;
+  answered_in_round: bigint;
   feed_address: Address;
   decimals: number;
   description: string;

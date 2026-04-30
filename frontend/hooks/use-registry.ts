@@ -1,7 +1,7 @@
 "use client";
 
 import { useReadContract } from "wagmi";
-import { CONTRACTS, registryAbi } from "@/lib/contracts";
+import { CONTRACTS, registryAbi, isConfigured } from "@/lib/contracts";
 import { IS_MOCK, MOCK_REGISTERED_AGENTS } from "@/lib/mocks";
 import type { Bytes32, HookResult } from "@/lib/types";
 
@@ -10,7 +10,7 @@ export function useRegisteredAgents(): HookResult<readonly Bytes32[]> {
     address: CONTRACTS.registry,
     abi: registryAbi,
     functionName: "getRegisteredAgents",
-    query: { enabled: !IS_MOCK },
+    query: { enabled: !IS_MOCK && isConfigured(CONTRACTS.registry) },
   });
 
   if (IS_MOCK) {
@@ -36,7 +36,7 @@ export function useIsRegistered(mrEnclave?: Bytes32): HookResult<boolean> {
     abi: registryAbi,
     functionName: "isRegistered",
     args: mrEnclave ? [mrEnclave] : undefined,
-    query: { enabled: !IS_MOCK && !!mrEnclave },
+    query: { enabled: !IS_MOCK && !!mrEnclave && isConfigured(CONTRACTS.registry) },
   });
 
   if (IS_MOCK) {
