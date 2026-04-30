@@ -134,6 +134,23 @@ app = FastAPI(
 )
 
 
+# CORS — frontend (Next.js dev server on :3000) calls this API on :8080.
+# Tighten allow_origins for prod / Phala Cloud deploy in Step 5.1.
+from fastapi.middleware.cors import CORSMiddleware
+
+_FRONTEND_ORIGINS = os.getenv(
+    "AEGIS_FRONTEND_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000",
+).split(",")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_FRONTEND_ORIGINS,
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     """Liveness + status. Frontend polls every ~10s."""

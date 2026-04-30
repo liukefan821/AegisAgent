@@ -156,3 +156,28 @@ class TestQuotes:
         resp = client.get(f"/quotes/{digest[2:]}")
         assert resp.status_code == 200
         assert resp.json()["digest"] == digest
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# CORS middleware
+# ────────────────────────────────────────────────────────────────────────────
+
+class TestCORS:
+    def test_cors_header_for_allowed_origin(self, client):
+        resp = client.get(
+            "/health",
+            headers={"Origin": "http://localhost:3000"},
+        )
+        assert resp.status_code == 200
+        assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+    def test_cors_preflight_get_allowed(self, client):
+        resp = client.options(
+            "/health",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert resp.status_code == 200
+        assert "GET" in resp.headers.get("access-control-allow-methods", "")
