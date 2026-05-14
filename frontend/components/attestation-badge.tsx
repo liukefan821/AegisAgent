@@ -1,12 +1,18 @@
 "use client";
 
+import { AttestationModal } from "@/components/attestation-modal";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
+import { badgeVariants } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import type { Bytes32, Hex } from "@/lib/types";
 
 export type AttestationStatus = "verified" | "pending" | "failed" | "unknown";
 
 interface AttestationBadgeProps {
   status: AttestationStatus;
-  digest?: string;
+  digest?: Bytes32;
+  txHash?: Hex;
 }
 
 const STATUS_CONFIG = {
@@ -32,16 +38,36 @@ const STATUS_CONFIG = {
   },
 } satisfies Record<AttestationStatus, { label: string; className: string }>;
 
-export function AttestationBadge({ status, digest }: AttestationBadgeProps) {
+export function AttestationBadge({ status, digest, txHash }: AttestationBadgeProps) {
   const config = STATUS_CONFIG[status];
+  const className = cn(
+    badgeVariants({ variant: "secondary" }),
+    "font-mono text-xs",
+    digest && "cursor-pointer hover:ring-2 hover:ring-ring/40",
+    config.className
+  );
+
+  if (!digest) {
+    return (
+      <Badge
+        variant="secondary"
+        className={className}
+        title="No digest available"
+      >
+        {config.label}
+      </Badge>
+    );
+  }
 
   return (
-    <Badge
-      variant="secondary"
-      className={`font-mono text-xs ${config.className}`}
-      title={digest ? `Quote digest: ${digest}` : "No digest available"}
-    >
-      {config.label}
-    </Badge>
+    <Dialog>
+      <DialogTrigger
+        className={className}
+        title={`Quote digest: ${digest}`}
+      >
+        {config.label}
+      </DialogTrigger>
+      <AttestationModal digest={digest} status={status} txHash={txHash} />
+    </Dialog>
   );
 }

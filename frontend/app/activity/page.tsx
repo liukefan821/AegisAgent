@@ -94,6 +94,7 @@ export default function ActivityPage() {
                         <AttestationBadge
                           status={action.verified ? "verified" : "failed"}
                           digest={action.event.quote_digest}
+                          txHash={action.event.transaction_hash}
                         />
                       </td>
                       <td className="py-3 text-right">

@@ -119,6 +119,7 @@ export default function DashboardPage() {
                       <AttestationBadge
                         status={action.verified ? "verified" : "failed"}
                         digest={action.event.quote_digest}
+                        txHash={action.event.transaction_hash}
                       />
                     </div>
                     <span className="text-xs text-muted-foreground">
