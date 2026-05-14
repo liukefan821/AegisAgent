@@ -153,7 +153,7 @@ export const MOCK_RESOLVED_ACTIONS: ResolvedAction[] = MOCK_ACTION_EVENTS.map(
   (event) => {
     return {
       event,
-      quote: MOCK_QUOTES[event.quote_digest],
+      quote: MOCK_QUOTES[event.quote_digest.toLowerCase()],
       verified:
         MOCK_QUOTE_VERIFIED_EVENTS.find(
           (q) => q.quote_digest === event.quote_digest

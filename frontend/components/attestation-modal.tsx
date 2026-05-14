@@ -17,7 +17,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useQuote } from "@/hooks/use-quote";
-import type { AttestationStatus } from "@/components/attestation-badge";
+import {
+  ATTESTATION_STATUS_CONFIG,
+  type AttestationStatus,
+} from "@/lib/attestation-status";
 import type { Bytes32, Hex } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatTimestamp, shortHex } from "@/lib/utils/format";
@@ -27,27 +30,6 @@ interface AttestationModalProps {
   status: AttestationStatus;
   txHash?: Hex;
 }
-
-const STATUS_CONFIG = {
-  verified: {
-    label: "✓ Verified",
-    className:
-      "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
-  },
-  pending: {
-    label: "⋯ Pending",
-    className:
-      "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
-  },
-  failed: {
-    label: "✕ Failed",
-    className: "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-200",
-  },
-  unknown: {
-    label: "? Unknown",
-    className: "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-200",
-  },
-} satisfies Record<AttestationStatus, { label: string; className: string }>;
 
 function normalizeHex(hex: string): string {
   return hex.startsWith("0x") ? hex.slice(2) : hex;
@@ -126,13 +108,13 @@ export function AttestationModal({
   const quote = useQuote(digest);
   const quoteData = quote.data;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const statusConfig = STATUS_CONFIG[status];
+  const statusConfig = ATTESTATION_STATUS_CONFIG[status];
 
   const rawQuoteLines = useMemo(
     () => (quoteData ? splitHexLines(quoteData.quote_hex) : []),
     [quoteData]
   );
-  const rawQuoteDisplay = `0x${rawQuoteLines.join("\n")}`;
+  const rawQuoteDisplay = rawQuoteLines.join("\n");
   const rawQuoteBytes = quoteData
     ? normalizeHex(quoteData.quote_hex).length / 2
     : 0;
@@ -178,7 +160,7 @@ export function AttestationModal({
           <section className="space-y-3">
             <Badge
               variant="secondary"
-              className={cn("font-mono text-sm", statusConfig.className)}
+              className={cn("font-mono text-sm", statusConfig.modalClassName)}
             >
               {statusConfig.label}
             </Badge>
@@ -246,9 +228,12 @@ export function AttestationModal({
               </Button>
             </div>
             <CollapsibleContent>
-              <pre className="max-h-60 overflow-y-auto whitespace-pre-wrap break-all p-3 font-mono text-xs leading-relaxed">
-                {rawQuoteDisplay}
-              </pre>
+              <div className="grid max-h-60 grid-cols-[2rem_minmax(0,1fr)] overflow-y-auto p-3 font-mono text-xs leading-relaxed">
+                <span className="select-none text-muted-foreground">0x</span>
+                <pre className="whitespace-pre-wrap break-all">
+                  {rawQuoteDisplay}
+                </pre>
+              </div>
             </CollapsibleContent>
           </Collapsible>
         </div>
