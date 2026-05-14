@@ -1,9 +1,19 @@
+const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL ?? "http://localhost:8080";
+
 export function isNetworkError(error: Error): boolean {
+  const name = error.name.toLowerCase();
+  const message = error.message.toLowerCase();
+
   return (
-    error.message.includes("Failed to fetch") ||
-    error.message.includes("NetworkError") ||
-    error.message.includes("Load failed") ||
-    error.message.includes("fetch failed")
+    name.includes("abort") ||
+    name.includes("timeout") ||
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("load failed") ||
+    message.includes("fetch failed") ||
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("operation was aborted")
   );
 }
 
@@ -21,7 +31,7 @@ export function quoteErrorMessage(error: Error): string {
 
 export function agentHealthErrorMessage(error: Error): string {
   if (isNetworkError(error)) {
-    return "TEE agent is unreachable. Make sure it is running on port 8080.";
+    return `TEE agent is unreachable. Make sure it is running at ${AGENT_URL}.`;
   }
 
   return "TEE agent status could not be loaded.";

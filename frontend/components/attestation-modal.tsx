@@ -10,6 +10,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DialogContent,
   DialogDescription,
@@ -131,10 +132,13 @@ export function AttestationModal({
 
       {quote.isLoading && (
         <div className="space-y-3">
-          <div className="h-8 w-32 animate-pulse rounded-md bg-muted" />
-          <div className="h-16 animate-pulse rounded-lg bg-muted" />
-          <div className="h-16 animate-pulse rounded-lg bg-muted" />
-          <div className="h-24 animate-pulse rounded-lg bg-muted" />
+          <span className="sr-only" role="status" aria-live="polite">
+            Loading attestation quote
+          </span>
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-16 rounded-lg" />
+          <Skeleton className="h-16 rounded-lg" />
+          <Skeleton className="h-24 rounded-lg" />
         </div>
       )}
 

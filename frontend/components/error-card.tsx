@@ -19,6 +19,8 @@ export function ErrorCard({
 }: ErrorCardProps) {
   return (
     <div
+      role="alert"
+      aria-live="polite"
       className={cn(
         "rounded-lg border border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-100",
         variant === "card" ? "p-4" : "p-3",

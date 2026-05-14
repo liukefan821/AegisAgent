@@ -51,6 +51,7 @@ export function useIsRegistered(mrEnclave?: Bytes32): HookResult<boolean> {
       isLoading: false,
       error: null,
       source: "mock",
+      refetch: () => {},
     };
   }
 
