@@ -31,7 +31,7 @@ export default function ActivityPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Activity</h1>
           <p className="text-sm text-muted-foreground">
@@ -59,7 +59,7 @@ export default function ActivityPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="min-w-[760px] w-full text-sm">
                 <thead>
                   <tr className="border-b text-xs uppercase text-muted-foreground">
                     <th className="py-2 text-left font-medium">Time</th>

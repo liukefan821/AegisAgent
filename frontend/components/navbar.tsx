@@ -16,12 +16,12 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background">
-      <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
-          <Link href="/" className="text-lg font-bold tracking-tight">
+      <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
+          <Link href="/" className="shrink-0 text-lg font-bold tracking-tight">
             AegisAgent
           </Link>
-          <nav className="flex flex-wrap items-center gap-1">
+          <nav className="-mx-1 flex min-w-0 items-center gap-1 overflow-x-auto px-1">
             {NAV_ITEMS.map((item) => {
               const isActive =
                 item.href === "/"
@@ -32,7 +32,7 @@ export function Navbar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                  className={`shrink-0 rounded-md px-3 py-1.5 text-sm transition-colors ${
                     isActive
                       ? "bg-zinc-100 text-foreground dark:bg-zinc-800"
                       : "text-muted-foreground hover:bg-zinc-50 hover:text-foreground dark:hover:bg-zinc-900"
@@ -44,7 +44,9 @@ export function Navbar() {
             })}
           </nav>
         </div>
-        <ConnectButton showBalance={false} chainStatus="icon" />
+        <div className="shrink-0">
+          <ConnectButton showBalance={false} chainStatus="icon" />
+        </div>
       </div>
     </header>
   );

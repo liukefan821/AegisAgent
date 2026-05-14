@@ -19,6 +19,7 @@ export function useRegisteredAgents(): HookResult<readonly Bytes32[]> {
       isLoading: false,
       error: null,
       source: "mock",
+      refetch: () => {},
     };
   }
 
@@ -27,6 +28,9 @@ export function useRegisteredAgents(): HookResult<readonly Bytes32[]> {
     isLoading: query.isLoading,
     error: query.error,
     source: "live",
+    refetch: () => {
+      void query.refetch();
+    },
   };
 }
 
@@ -55,5 +59,8 @@ export function useIsRegistered(mrEnclave?: Bytes32): HookResult<boolean> {
     isLoading: query.isLoading,
     error: query.error,
     source: "live",
+    refetch: () => {
+      void query.refetch();
+    },
   };
 }

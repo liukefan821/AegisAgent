@@ -20,6 +20,7 @@ export function useVaultBalance(user?: Address): HookResult<bigint> {
       isLoading: false,
       error: null,
       source: "mock",
+      refetch: () => {},
     };
   }
 
@@ -28,6 +29,9 @@ export function useVaultBalance(user?: Address): HookResult<bigint> {
     isLoading: query.isLoading,
     error: query.error,
     source: "live",
+    refetch: () => {
+      void query.refetch();
+    },
   };
 }
 
@@ -46,6 +50,7 @@ export function useUserNonce(user?: Address): HookResult<bigint> {
       isLoading: false,
       error: null,
       source: "mock",
+      refetch: () => {},
     };
   }
 
@@ -54,5 +59,8 @@ export function useUserNonce(user?: Address): HookResult<bigint> {
     isLoading: query.isLoading,
     error: query.error,
     source: "live",
+    refetch: () => {
+      void query.refetch();
+    },
   };
 }

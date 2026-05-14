@@ -2,6 +2,7 @@
 
 import { Check, ChevronDown, Copy, ExternalLink } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ErrorCard } from "@/components/error-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +23,7 @@ import {
   type AttestationStatus,
 } from "@/lib/attestation-status";
 import type { Bytes32, Hex } from "@/lib/types";
+import { quoteErrorMessage } from "@/lib/error-messages";
 import { cn } from "@/lib/utils";
 import { formatTimestamp, shortHex } from "@/lib/utils/format";
 
@@ -42,22 +44,6 @@ function splitHexLines(hex: string, width: number = 64): string[] {
     lines.push(raw.slice(i, i + width));
   }
   return lines;
-}
-
-function friendlyErrorMessage(error: Error): string {
-  if (error.message === "Quote not found") {
-    return "Quote not found";
-  }
-
-  if (
-    error.message.includes("Failed to fetch") ||
-    error.message.includes("NetworkError") ||
-    error.message.includes("Load failed")
-  ) {
-    return "TEE agent may not be running or reachable.";
-  }
-
-  return error.message;
 }
 
 function FieldRow({
@@ -94,7 +80,11 @@ function FieldRow({
         title={`Copy ${label}`}
         onClick={() => onCopy(copyKey, value)}
       >
-        {copied ? <Check className="text-emerald-600" /> : <Copy />}
+        {copied ? (
+          <Check className="text-emerald-600 dark:text-emerald-400" />
+        ) : (
+          <Copy />
+        )}
       </Button>
     </div>
   );
@@ -149,10 +139,11 @@ export function AttestationModal({
       )}
 
       {quote.error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-200">
-          <div className="font-medium">Unable to load quote</div>
-          <div className="mt-1">{friendlyErrorMessage(quote.error)}</div>
-        </div>
+        <ErrorCard
+          variant="inline"
+          message={quoteErrorMessage(quote.error)}
+          onRetry={quote.refetch}
+        />
       )}
 
       {quoteData && (
@@ -221,7 +212,7 @@ export function AttestationModal({
                 onClick={() => handleCopy("quote_hex", quoteData.quote_hex)}
               >
                 {copiedKey === "quote_hex" ? (
-                  <Check className="text-emerald-600" />
+                  <Check className="text-emerald-600 dark:text-emerald-400" />
                 ) : (
                   <Copy />
                 )}

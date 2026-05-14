@@ -54,6 +54,7 @@ export function useQuote(digest?: Bytes32): HookResult<AttestationQuote> {
       isLoading: false,
       error: normalizedDigest && !quote ? new Error("Quote not found") : null,
       source: "mock",
+      refetch: () => {},
     };
   }
 
@@ -62,5 +63,8 @@ export function useQuote(digest?: Bytes32): HookResult<AttestationQuote> {
     isLoading: query.isLoading,
     error: query.error as Error | null,
     source: "live",
+    refetch: () => {
+      void query.refetch();
+    },
   };
 }
