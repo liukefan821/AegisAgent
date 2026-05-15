@@ -32,6 +32,7 @@ export function useAgentHealth(): HookResult<HealthResponse> {
       isLoading: false,
       error: null,
       source: "mock",
+      refetch: () => {},
     };
   }
 
@@ -40,5 +41,8 @@ export function useAgentHealth(): HookResult<HealthResponse> {
     isLoading: query.isLoading,
     error: query.error as Error | null,
     source: "live",
+    refetch: () => {
+      void query.refetch();
+    },
   };
 }

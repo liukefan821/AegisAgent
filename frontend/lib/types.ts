@@ -125,4 +125,5 @@ export interface HookResult<T> {
   isLoading: boolean;
   error: Error | null;
   source: "mock" | "live";
+  refetch?: () => void;
 }

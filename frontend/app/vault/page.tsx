@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useAccount } from "wagmi";
+import { ErrorCard } from "@/components/error-card";
+import { BalanceCardSkeleton } from "@/components/loading-states";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUserNonce, useVaultBalance } from "@/hooks/use-vault";
+import { vaultErrorMessage } from "@/lib/error-messages";
 import { formatEth, shortHex } from "@/lib/utils/format";
 
 export default function VaultPage() {
@@ -23,6 +26,11 @@ export default function VaultPage() {
 
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const balanceError = balance.error ?? nonce.error;
+  const retryBalance = () => {
+    balance.refetch?.();
+    nonce.refetch?.();
+  };
 
   if (!isConnected) {
     return <ConnectGate />;
@@ -37,29 +45,38 @@ export default function VaultPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardDescription>Current Balance</CardDescription>
-          <CardTitle className="font-mono text-3xl">
-            {balance.data !== undefined
-              ? `${formatEth(balance.data)} Sepolia ETH`
-              : "-"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1 text-xs text-muted-foreground">
-          <div>
-            Address:{" "}
-            <span className="font-mono">{shortHex(address ?? "", 8, 6)}</span>
-          </div>
-          <div>Nonce: {nonce.data?.toString() ?? "-"}</div>
-          <div>
-            Source:{" "}
-            <Badge variant="outline" className="text-xs">
-              {balance.source}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+      {balanceError ? (
+        <ErrorCard
+          message={vaultErrorMessage(balanceError)}
+          onRetry={retryBalance}
+        />
+      ) : balance.isLoading || nonce.isLoading ? (
+        <BalanceCardSkeleton />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardDescription>Current Balance</CardDescription>
+            <CardTitle className="break-words font-mono text-2xl sm:text-3xl">
+              {balance.data !== undefined
+                ? `${formatEth(balance.data)} Sepolia ETH`
+                : "-"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-xs text-muted-foreground">
+            <div>
+              Address:{" "}
+              <span className="font-mono">{shortHex(address ?? "", 8, 6)}</span>
+            </div>
+            <div>Nonce: {nonce.data?.toString() ?? "-"}</div>
+            <div>
+              Source:{" "}
+              <Badge variant="outline" className="text-xs">
+                {balance.source}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="deposit">
         <TabsList className="grid w-full grid-cols-2">

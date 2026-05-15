@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { AttestationBadge } from "@/components/attestation-badge";
+import { ErrorCard } from "@/components/error-card";
+import { StatCardSkeleton } from "@/components/loading-states";
 import {
   Card,
   CardContent,
@@ -13,6 +15,11 @@ import {
 import { useAgentHealth } from "@/hooks/use-agent-health";
 import { useRegisteredAgents } from "@/hooks/use-registry";
 import { useVaultBalance } from "@/hooks/use-vault";
+import {
+  agentHealthErrorMessage,
+  registryErrorMessage,
+  vaultErrorMessage,
+} from "@/lib/error-messages";
 import { IS_MOCK, MOCK_RESOLVED_ACTIONS } from "@/lib/mocks";
 import { formatEth, formatTimestamp, shortHex } from "@/lib/utils/format";
 
@@ -47,53 +54,80 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Vault Balance</CardDescription>
-            <CardTitle className="font-mono text-2xl">
-              {balance.data !== undefined
-                ? `${formatEth(balance.data)} Sepolia ETH`
-                : "-"}
-            </CardTitle>
-          </CardHeader>
-        </Card>
+        {balance.error ? (
+          <ErrorCard
+            message={vaultErrorMessage(balance.error)}
+            onRetry={balance.refetch}
+          />
+        ) : balance.isLoading ? (
+          <StatCardSkeleton />
+        ) : (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardDescription>Vault Balance</CardDescription>
+              <CardTitle className="font-mono text-2xl">
+                {balance.data !== undefined
+                  ? `${formatEth(balance.data)} Sepolia ETH`
+                  : "-"}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>TEE Agent Status</CardDescription>
-            <CardTitle className="flex items-center gap-2">
-              {health.data ? (
-                <>
-                  <span
-                    className={`inline-block size-2 rounded-full ${
-                      health.data.status === "alive"
-                        ? "bg-emerald-500"
-                        : "bg-amber-500"
-                    }`}
-                  />
-                  <span className="capitalize">{health.data.status}</span>
-                </>
-              ) : (
-                "-"
-              )}
-            </CardTitle>
-          </CardHeader>
-          {health.data && (
-            <CardContent className="space-y-0.5 text-xs text-muted-foreground">
-              <div>Model: {health.data.ollama_model}</div>
-              <div>Ollama: {health.data.ollama_status}</div>
-            </CardContent>
-          )}
-        </Card>
+        {health.error ? (
+          <ErrorCard
+            message={agentHealthErrorMessage(health.error)}
+            onRetry={health.refetch}
+          />
+        ) : health.isLoading ? (
+          <StatCardSkeleton />
+        ) : (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardDescription>TEE Agent Status</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                {health.data ? (
+                  <>
+                    <span
+                      className={`inline-block size-2 rounded-full ${
+                        health.data.status === "alive"
+                          ? "bg-emerald-500"
+                          : "bg-amber-500"
+                      }`}
+                    />
+                    <span className="capitalize">{health.data.status}</span>
+                  </>
+                ) : (
+                  "-"
+                )}
+              </CardTitle>
+            </CardHeader>
+            {health.data && (
+              <CardContent className="space-y-0.5 text-xs text-muted-foreground">
+                <div>Model: {health.data.ollama_model}</div>
+                <div>Ollama: {health.data.ollama_status}</div>
+              </CardContent>
+            )}
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Registered Agents</CardDescription>
-            <CardTitle className="font-mono text-2xl">
-              {agents.data?.length ?? "-"}
-            </CardTitle>
-          </CardHeader>
-        </Card>
+        {agents.error ? (
+          <ErrorCard
+            message={registryErrorMessage(agents.error)}
+            onRetry={agents.refetch}
+          />
+        ) : agents.isLoading ? (
+          <StatCardSkeleton />
+        ) : (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardDescription>Registered Agents</CardDescription>
+              <CardTitle className="font-mono text-2xl">
+                {agents.data?.length ?? "-"}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        )}
       </div>
 
       <Card>
@@ -109,10 +143,10 @@ export default function DashboardPage() {
               {recentActions.map((action) => (
                 <div
                   key={action.event.transaction_hash}
-                  className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0"
+                  className="flex flex-col gap-2 border-b pb-3 last:border-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm">
                         {formatEth(action.event.amount)} Sepolia ETH
                       </span>

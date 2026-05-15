@@ -1,6 +1,8 @@
 "use client";
 
 import { useAccount } from "wagmi";
+import { ErrorCard } from "@/components/error-card";
+import { AgentRowSkeleton } from "@/components/loading-states";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useRegisteredAgents } from "@/hooks/use-registry";
+import { registryErrorMessage } from "@/lib/error-messages";
 import { shortHex } from "@/lib/utils/format";
 
 export default function AgentsPage() {
@@ -49,8 +52,18 @@ export default function AgentsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {agents.isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
+          {agents.error ? (
+            <ErrorCard
+              variant="inline"
+              message={registryErrorMessage(agents.error)}
+              onRetry={agents.refetch}
+            />
+          ) : agents.isLoading ? (
+            <div className="space-y-3">
+              <AgentRowSkeleton />
+              <AgentRowSkeleton />
+              <AgentRowSkeleton />
+            </div>
           ) : !agents.data || agents.data.length === 0 ? (
             <p className="py-4 text-sm text-muted-foreground">
               No agents registered.
@@ -60,7 +73,7 @@ export default function AgentsPage() {
               {agents.data.map((mrEnclave) => (
                 <div
                   key={mrEnclave}
-                  className="flex items-center justify-between gap-4 border-b pb-3 last:border-0 last:pb-0"
+                  className="flex flex-col gap-3 border-b pb-3 last:border-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                 >
                   <div className="flex min-w-0 flex-col gap-1">
                     <span className="truncate font-mono text-sm">
@@ -73,6 +86,7 @@ export default function AgentsPage() {
                   <Button
                     size="sm"
                     variant="outline"
+                    className="w-full sm:w-auto"
                     disabled={agents.source === "mock"}
                     onClick={() =>
                       alert("Authorize will be wired to Vault.authorizeAgent().")
@@ -101,6 +115,7 @@ export default function AgentsPage() {
         <CardContent>
           <Button
             variant="destructive"
+            className="w-full sm:w-auto"
             disabled={agents.source === "mock"}
             onClick={() => {
               if (
