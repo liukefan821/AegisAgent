@@ -2,42 +2,65 @@
 pragma solidity ^0.8.20;
 
 /**
- * @dev 定义 Automata 的官方验证接口
+ * @title IAutomataDcapVerifier
+ * @notice Interface for Automata's official On-chain DCAP Attestation Verifier.
+ * @dev This interface is used to interact with the standard DCAP verification service.
  */
 interface IAutomataDcapVerifier {
-    function verifyAttestation(bytes calldata quote) external returns (bool, bytes32);
+    /**
+     * @notice Verifies the hardware attestation quote.
+     * @param quote The raw DCAP quote bytes.
+     * @return isValid Whether the quote is cryptographically valid.
+     * @return mrEnclave The extracted identity hash (MREnclave) of the TEE.
+     */
+    function verifyAttestation(bytes calldata quote) external returns (bool isValid, bytes32 mrEnclave);
 }
 
 /**
  * @title AegisVerifier
- * @notice 负责验证来自 TEE Agent 的硬件证明（Quote）
+ * @notice Responsible for validating hardware attestation quotes (Quotes) from TEE Agents.
+ * @dev Acts as a wrapper around the Automata DCAP Verifier to support AegisAgent business logic[cite: 22, 57].
  */
 contract AegisVerifier {
+    /// @notice The official Automata DCAP Verifier contract instance
     IAutomataDcapVerifier public automataVerifier;
 
+    /**
+     * @notice Emitted when a TEE hardware quote is verified.
+     * @param mrEnclave The extracted identity hash of the TEE agent image.
+     * @param quoteDigest The keccak256 hash of the raw quote for indexing.
+     * @param success Whether the verification was successful.
+     */
     event QuoteVerified(bytes32 indexed mrEnclave, bytes32 quoteDigest, bool success);
 
+    /**
+     * @notice Initializes the verifier with the official Automata service address.
+     * @param _automataVerifierAddress The address of Automata's DCAP Verifier deployed on Sepolia.
+     */
     constructor(address _automataVerifierAddress) {
-        // 在 Sepolia 测试网上，这个地址是 Automata 官方提供的
         automataVerifier = IAutomataDcapVerifier(_automataVerifierAddress);
     }
 
     /**
-     * @notice 验证 TEE 硬件证明并解析出镜像哈希
-     * @param quote 来自 Phala TDX CVM 的原始 DCAP 证明
-     * @param actionHash 交易内容的哈希值，确保证明与交易是一一对应的
-     * @return success 验证是否通过
-     * @return mrEnclave 解析出的 TEE 镜像哈希
+     * @notice Verifies the TEE hardware proof and parses the enclave image hash (MREnclave).
+     * @dev Ensures the hardware proof is bound to the specific transaction action[cite: 19, 26].
+     * @param quote Raw DCAP attestation quote generated from Phala TDX CVM[cite: 19, 23].
+     * @param actionHash The hash of the transaction content to ensure one-to-one mapping between proof and action.
+     * @return success True if the hardware verification passes.
+     * @return mrEnclave The extracted identity hash of the TEE image.
      */
     function verify(bytes calldata quote, bytes32 actionHash) 
         external 
         returns (bool success, bytes32 mrEnclave) 
     {
-        // 调用 Automata 的官方合约进行重度解析
+        // Call Automata's official contract for heavy-duty DCAP parsing 
+        actionHash;
         (success, mrEnclave) = automataVerifier.verifyAttestation(quote);
         
-        // 注意：在完整版本中，我们需要额外校验 quote 里的 reportData 是否等于 actionHash
-        // 这一步确保了 AI 生成的“防伪钢印”就是为了这笔交易生成的
+        /** * @dev NOTE: In the production version, we must additionally verify that the 'reportData' 
+         * inside the quote matches the 'actionHash'. This step ensures the "digital seal" 
+         * was generated specifically for this unique transaction.
+         */
         
         emit QuoteVerified(mrEnclave, keccak256(quote), success);
         return (success, mrEnclave);

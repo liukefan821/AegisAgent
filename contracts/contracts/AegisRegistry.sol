@@ -3,30 +3,46 @@ pragma solidity ^0.8.20;
 
 /**
  * @title AegisRegistry
- * @notice 负责管理和维护受信任的 TEE Enclave 镜像哈希（mrEnclave）
- * @dev 只有在这个合约中登记过的 mrEnclave，其发出的指令才会被金库执行
+ * @notice Manages and maintains the whitelist of trusted TEE Enclave image hashes (mrEnclave).
+ * @dev Only mrEnclave hashes registered in this contract can have their instructions executed by the Vault.
  */
 contract AegisRegistry {
+    /// @notice The address of the contract administrator
     address public owner;
     
-    // 存储已注册的 enclave 哈希
+    /// @dev Mapping to store the registration status of each enclave hash
     mapping(bytes32 => bool) private _registeredAgents;
+    
+    /// @dev Array to store the list of all registered enclave hashes for enumeration
     bytes32[] private _agentList;
 
+    /**
+     * @notice Emitted when a new TEE image hash is added to the whitelist.
+     * @param mrEnclave The unique identity hash of the TEE environment.
+     * @param registrar The address that performed the registration.
+     * @param timestamp The block timestamp when the registration occurred.
+     */
     event AgentRegistered(bytes32 indexed mrEnclave, address indexed registrar, uint256 timestamp);
 
+    /**
+     * @dev Throws if called by any account other than the owner.
+     */
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner can call this");
         _;
     }
 
+    /**
+     * @dev Initializes the contract setting the deployer as the initial owner.
+     */
     constructor() {
         owner = msg.sender;
     }
 
     /**
-     * @notice 将新的 TEE 镜像哈希加入白名单
-     * @param mrEnclave TEE 环境的唯一标识哈希
+     * @notice Adds a new TEE image hash to the whitelist.
+     * @dev Only the contract owner can call this function.
+     * @param mrEnclave The unique identity hash of the TEE environment.
      */
     function registerAgent(bytes32 mrEnclave) external onlyOwner {
         require(!_registeredAgents[mrEnclave], "Agent already registered");
@@ -36,14 +52,17 @@ contract AegisRegistry {
     }
 
     /**
-     * @notice 检查给定的 mrEnclave 是否已注册
+     * @notice Checks if a given mrEnclave is registered in the whitelist.
+     * @param mrEnclave The TEE hash to check.
+     * @return True if the hash is registered, false otherwise.
      */
     function isRegistered(bytes32 mrEnclave) external view returns (bool) {
         return _registeredAgents[mrEnclave];
     }
 
     /**
-     * @notice 获取所有已注册的 agent 列表
+     * @notice Returns the complete list of all registered agent hashes.
+     * @return An array containing all registered mrEnclave hashes.
      */
     function getRegisteredAgents() external view returns (bytes32[] memory) {
         return _agentList;
