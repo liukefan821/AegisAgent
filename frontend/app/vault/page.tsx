@@ -39,7 +39,7 @@ export default function VaultPage() {
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">Vault</h1>
+        <h1 className="text-xl font-medium">Vault</h1>
         <p className="text-sm text-muted-foreground">
           Manage funds and authorized agents.
         </p>
@@ -154,7 +154,7 @@ export default function VaultPage() {
 function ConnectGate() {
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-32 text-center">
-      <h2 className="text-xl font-bold">Connect Wallet</h2>
+      <h2 className="text-xl font-medium">Connect Wallet</h2>
       <p className="text-sm text-muted-foreground">
         Use the Connect button in the navbar to access your vault.
       </p>

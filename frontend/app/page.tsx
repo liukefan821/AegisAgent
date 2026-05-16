@@ -32,7 +32,7 @@ export default function DashboardPage() {
   if (!isConnected) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-32 text-center">
-        <h1 className="text-3xl font-bold">Welcome to AegisAgent</h1>
+        <h1 className="text-2xl font-medium">Welcome to AegisAgent</h1>
         <p className="max-w-md text-muted-foreground">
           A TEE-verified autonomous DeFi agent. Connect your wallet to view your
           vault and agent activity.
@@ -46,7 +46,7 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <h1 className="text-xl font-medium">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
           {balance.source === "mock" &&
             "⚠ Showing mock data — set NEXT_PUBLIC_USE_MOCK=false after contract deployment."}

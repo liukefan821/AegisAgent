@@ -23,7 +23,7 @@ export default function AgentsPage() {
   if (!isConnected) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-32 text-center">
-        <h2 className="text-xl font-bold">Connect Wallet</h2>
+        <h2 className="text-xl font-medium">Connect Wallet</h2>
         <p className="text-sm text-muted-foreground">
           Connect a wallet to manage agent authorizations.
         </p>
@@ -34,7 +34,7 @@ export default function AgentsPage() {
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">Agents</h1>
+        <h1 className="text-xl font-medium">Agents</h1>
         <p className="text-sm text-muted-foreground">
           Authorize TEE-verified agents to act on your vault, or revoke all
           permissions.
