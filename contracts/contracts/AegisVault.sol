@@ -124,8 +124,9 @@ contract AegisVault {
     }
 
     /**
-     * @notice Executes a transaction decided by a verified TEE Agent.
+     * @notice Executes a transaction decided by a verified TEE Agent autonomously.
      * @dev Validates the hardware quote, checks registration/authorization, and verifies the action hash.
+     * @param user The address of the user whose funds are being managed.
      * @param quote The raw hardware attestation quote provided by the TEE.
      * @param actionHash The cryptographic hash of the intended action (user, amount, target, nonce, timestamp).
      * @param amount The amount of ETH to be transferred.
@@ -133,16 +134,17 @@ contract AegisVault {
      * @param timestamp The expiration deadline for this specific instruction.
      */
     function executeAction(
+        address user,            // 【新增】显式传入资产所有者（用户）的地址
         bytes calldata quote,
         bytes32 actionHash,
         uint256 amount,
         address target,
         uint256 timestamp
     ) external {
-        // 1. Core security checks
+        // 1. Core security checks (将 msg.sender 全部替换为 user)
         require(timestamp > block.timestamp, "Timestamp expired");
-        require(!_emergencyStopped[msg.sender], "Emergency stop active");
-        require(_balances[msg.sender] >= amount, "Insufficient balance");
+        require(!_emergencyStopped[user], "Emergency stop active");
+        require(_balances[user] >= amount, "Insufficient balance");
 
         // 2. Hardware proof verification
         (bool ok, bytes32 mrEnclave) = verifier.verify(quote, actionHash);
@@ -150,21 +152,21 @@ contract AegisVault {
 
         // 3. Registry and Authorization checks
         require(registry.isRegistered(mrEnclave), "Agent image not registered");
-        require(_authorizations[msg.sender][mrEnclave], "User has not authorized this agent");
+        require(_authorizations[user][mrEnclave], "User has not authorized this agent");
 
         // 4. Reconstruct and verify hash to prevent tampering
-        bytes32 expectedHash = keccak256(abi.encode(msg.sender, amount, target, _nonces[msg.sender], timestamp));
+        bytes32 expectedHash = keccak256(abi.encode(user, amount, target, _nonces[user], timestamp));
         require(actionHash == expectedHash, "Hash mismatch");
 
         // 5. Execute business logic: update state and transfer funds
-        _balances[msg.sender] -= amount;
-        _nonces[msg.sender] += 1;
-        _lastActionTimestamp[msg.sender] = block.timestamp;
+        _balances[user] -= amount;
+        _nonces[user] += 1;
+        _lastActionTimestamp[user] = block.timestamp;
         
-        // Low-level call to handle the transfer and capture results for coverage
+        // Low-level call to handle the transfer
         (bool success, ) = payable(target).call{value: amount}("");
         require(success, "Transfer failed");
 
-        emit ActionExecuted(msg.sender, mrEnclave, keccak256(quote), amount, block.timestamp);
+        emit ActionExecuted(user, mrEnclave, keccak256(quote), amount, block.timestamp);
     }
 }
