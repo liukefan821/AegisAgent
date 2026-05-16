@@ -14,7 +14,6 @@ use(chaiAsPromised);
 describe("AegisAgent Smart Contract Logic & Security Tests", function () {
   async function deployAegis() {
     const viem = await (hre as any).viem;
-    // 【修改点】：新增一个 agent 钱包，模拟 TEE 里的机器人
     const [owner, user, hacker, agent] = await viem.getWalletClients();
 
     const mock = await viem.deployContract("MockAutomata");
@@ -28,7 +27,6 @@ describe("AegisAgent Smart Contract Logic & Security Tests", function () {
     const vaultAsUser = await viem.getContractAt("AegisVault", vault.address, {
       client: { wallet: user },
     });
-    // 【修改点】：创建一个 vaultAsAgent，专供机器人发交易
     const vaultAsAgent = await viem.getContractAt("AegisVault", vault.address, {
       client: { wallet: agent },
     });
@@ -40,12 +38,12 @@ describe("AegisAgent Smart Contract Logic & Security Tests", function () {
       owner,
       user,
       hacker,
-      agent, // 导出 agent
+      agent,
       reg,
       ver,
       vault,
       vaultAsUser,
-      vaultAsAgent, // 导出 vaultAsAgent
+      vaultAsAgent,
       regAsUser,
       viem,
     };
@@ -72,7 +70,6 @@ describe("AegisAgent Smart Contract Logic & Security Tests", function () {
       ),
     );
 
-    // 【核心修改】：现在是 vaultAsAgent 在发交易！并且传入了 user 的地址
     await vaultAsAgent.write.executeAction([
       user.account.address,
       quote,
@@ -130,7 +127,6 @@ describe("AegisAgent Smart Contract Logic & Security Tests", function () {
       ),
     );
 
-    // 【修改点】：增加 user 入参，改为 agent 调用
     await expect(
       vaultAsAgent.write.executeAction([
         user.account.address,
