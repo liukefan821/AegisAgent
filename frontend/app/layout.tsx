@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/navbar";
+import { SwipeNavigation } from "@/components/swipe-navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 import { Providers } from "./providers";
@@ -41,7 +42,7 @@ export default function RootLayout({
         <Providers>
           <Navbar />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
-            {children}
+            <SwipeNavigation>{children}</SwipeNavigation>
           </main>
           <ThemeToggle />
         </Providers>

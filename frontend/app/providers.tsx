@@ -12,12 +12,22 @@ import { wagmiConfig } from "@/lib/wagmi";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { useMemo, useState } from "react";
 
+const appFontStack =
+  "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif";
+
 function RainbowKitThemeProvider({ children }: { children: React.ReactNode }) {
   const { resolvedTheme } = useTheme();
-  const rainbowKitTheme = useMemo(
-    () => (resolvedTheme === "dark" ? darkTheme() : lightTheme()),
-    [resolvedTheme]
-  );
+  const rainbowKitTheme = useMemo(() => {
+    const theme = resolvedTheme === "dark" ? darkTheme() : lightTheme();
+
+    return {
+      ...theme,
+      fonts: {
+        ...theme.fonts,
+        body: appFontStack,
+      },
+    };
+  }, [resolvedTheme]);
 
   return (
     <RainbowKitProvider
