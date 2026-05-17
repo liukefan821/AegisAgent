@@ -127,3 +127,16 @@ export interface HookResult<T> {
   source: "mock" | "live";
   refetch?: () => void;
 }
+
+export interface WriteHookResult<
+  TArgs extends readonly unknown[] = readonly [],
+> {
+  submit: (...args: TArgs) => boolean;
+  isPending: boolean;
+  isConfirming: boolean;
+  isSuccess: boolean;
+  isError: boolean;
+  txHash: Hex | undefined;
+  error: Error | null;
+  reset: () => void;
+}

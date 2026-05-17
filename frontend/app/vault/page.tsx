@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { ErrorCard } from "@/components/error-card";
 import { BalanceCardSkeleton } from "@/components/loading-states";
+import { WriteStatus, writeButtonLabel } from "@/components/write-status";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUserNonce, useVaultBalance } from "@/hooks/use-vault";
+import { useDeposit, useWithdraw } from "@/hooks/use-vault-writes";
 import { vaultErrorMessage } from "@/lib/error-messages";
 import { formatEth, shortHex } from "@/lib/utils/format";
 
@@ -23,14 +25,60 @@ export default function VaultPage() {
   const { address, isConnected } = useAccount();
   const balance = useVaultBalance(address);
   const nonce = useUserNonce(address);
+  const deposit = useDeposit();
+  const withdraw = useWithdraw();
 
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [lastDepositAmount, setLastDepositAmount] = useState("");
+  const [lastWithdrawAmount, setLastWithdrawAmount] = useState("");
   const balanceError = balance.error ?? nonce.error;
+  const refetchVaultReads = useRef({
+    balance: balance.refetch,
+    nonce: nonce.refetch,
+  });
+  useEffect(() => {
+    refetchVaultReads.current = {
+      balance: balance.refetch,
+      nonce: nonce.refetch,
+    };
+  });
   const retryBalance = () => {
     balance.refetch?.();
     nonce.refetch?.();
   };
+  const submitDeposit = () => {
+    const amount = depositAmount;
+    if (deposit.submit(amount)) {
+      setLastDepositAmount(amount);
+      setDepositAmount("");
+    }
+  };
+  const submitWithdraw = () => {
+    const amount = withdrawAmount;
+    if (withdraw.submit(amount)) {
+      setLastWithdrawAmount(amount);
+      setWithdrawAmount("");
+    }
+  };
+
+  useEffect(() => {
+    if (!deposit.isSuccess) {
+      return;
+    }
+
+    refetchVaultReads.current.balance?.();
+    refetchVaultReads.current.nonce?.();
+  }, [deposit.isSuccess, deposit.txHash]);
+
+  useEffect(() => {
+    if (!withdraw.isSuccess) {
+      return;
+    }
+
+    refetchVaultReads.current.balance?.();
+    refetchVaultReads.current.nonce?.();
+  }, [withdraw.isSuccess, withdraw.txHash]);
 
   if (!isConnected) {
     return <ConnectGate />;
@@ -102,15 +150,20 @@ export default function VaultPage() {
               />
               <Button
                 className="w-full"
-                disabled={balance.source === "mock" || !depositAmount}
-                onClick={() =>
-                  alert("Deposit will be wired to Vault.deposit().")
+                disabled={
+                  !depositAmount || deposit.isPending || deposit.isConfirming
                 }
+                onClick={submitDeposit}
               >
-                {balance.source === "mock"
-                  ? "Deposit (disabled in mock mode)"
-                  : `Deposit ${depositAmount || "0"} Sepolia ETH`}
+                {writeButtonLabel(
+                  deposit,
+                  `Deposit ${depositAmount || "0"} Sepolia ETH`
+                )}
               </Button>
+              <WriteStatus
+                write={deposit}
+                successMessage={`Successfully deposited ${lastDepositAmount} Sepolia ETH.`}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -134,15 +187,22 @@ export default function VaultPage() {
               <Button
                 className="w-full"
                 variant="outline"
-                disabled={balance.source === "mock" || !withdrawAmount}
-                onClick={() =>
-                  alert("Withdraw will be wired to Vault.withdraw().")
+                disabled={
+                  !withdrawAmount ||
+                  withdraw.isPending ||
+                  withdraw.isConfirming
                 }
+                onClick={submitWithdraw}
               >
-                {balance.source === "mock"
-                  ? "Withdraw (disabled in mock mode)"
-                  : `Withdraw ${withdrawAmount || "0"} Sepolia ETH`}
+                {writeButtonLabel(
+                  withdraw,
+                  `Withdraw ${withdrawAmount || "0"} Sepolia ETH`
+                )}
               </Button>
+              <WriteStatus
+                write={withdraw}
+                successMessage={`Successfully withdrew ${lastWithdrawAmount} Sepolia ETH.`}
+              />
             </CardContent>
           </Card>
         </TabsContent>
