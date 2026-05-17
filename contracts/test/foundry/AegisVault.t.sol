@@ -6,6 +6,7 @@ import "./Handler.t.sol";
 import "../../contracts/AegisVault.sol";
 import "../../contracts/AegisRegistry.sol";
 import "../../contracts/AegisVerifier.sol";
+import "../../contracts/MockAutomata.sol";
 
 /**
  * @title AegisVaultInvariantTest
@@ -23,8 +24,11 @@ contract AegisVaultInvariantTest is Test {
      */
     function setUp() public {
         registry = new AegisRegistry();
-        // Deploy a Mock Verifier for testing purposes
-        AegisVerifier verifier = new AegisVerifier(address(0x1)); 
+        
+        // 【升级点】：使用真实的 Mock 合约，而不是 0x1 地址，避免底层 revert
+        MockAutomata mock = new MockAutomata();
+        AegisVerifier verifier = new AegisVerifier(address(mock));
+        
         vault = new AegisVault(address(registry), address(verifier));
         
         // Initialize the Handler to manage randomized state transitions
