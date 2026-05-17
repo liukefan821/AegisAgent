@@ -1,0 +1,33 @@
+# AegisAgent TEE Agent — Phala Cloud TDX CVM deployment
+#
+# Deploy on Phala Cloud:
+#   1. Go to https://cloud.phala.network → Dashboard → Deploy
+#   2. Choose "Docker Compose" → paste this file
+#   3. Set env vars in "Secure Environment Variables"
+#   4. Select Intel TDX → Deploy
+#
+# The /var/run/dstack.sock volume mount gives the agent access to the
+# dstack guest-agent for real TDX attestation quotes (GetQuote API).
+
+version: "3.8"
+
+services:
+  tee-agent:
+    image: ${DOCKER_IMAGE:-liukefan821/aegis-tee-agent:latest}
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/dstack.sock:/var/run/dstack.sock
+    environment:
+      # Use real Dstack TDX backend (not mock)
+      - AEGIS_MOCK_QUOTE=false
+      # Ollama is not available inside the CVM for demo — agent runs
+      # in degraded mode (health returns ollama_status="unreachable")
+      # For full integration, add an Ollama sidecar or external endpoint.
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://localhost:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+      # Frontend CORS — Phala Cloud public endpoint + Vercel deploy
+      - AEGIS_FRONTEND_ORIGINS=${AEGIS_FRONTEND_ORIGINS:-*}
+      # Enclave image hash — set to Docker image digest after push
+      - ENCLAVE_IMAGE_HASH=${ENCLAVE_IMAGE_HASH:-0x0000000000000000000000000000000000000000000000000000000000000000}
+    restart: unless-stopped

@@ -11,8 +11,9 @@ Two backends are supported:
              Carries an "AEGIS_MOCK_QUOTE_v1" magic prefix so on-chain
              verifiers and tests can immediately distinguish dev quotes
              from production ones.
-  - DSTACK : real Intel TDX quotes via the Dstack SDK on Phala Cloud.
-             Implemented in Step 5 once the TDX host is provisioned.
+  - DSTACK : real Intel TDX quotes via the dstack guest-agent Unix socket
+             on Phala Cloud. Calls POST /GetQuote on /var/run/dstack.sock
+             with report_data = SHA-256(input_hash || output_hash).
 
 This module is the *only* component allowed to mint attestation quotes.
 All other agent modules call QuoteGenerator.generate() so every decision
@@ -22,7 +23,9 @@ carries a verifiable proof of execution.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import socket
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -44,6 +47,12 @@ MOCK_QUOTE_MAGIC = b"AEGIS_MOCK_QUOTE_v1"
 # Default mock mr_enclave — placeholder fingerprint of the qwen2.5:7b model.
 # In production this is replaced by the real measurement of the running TD.
 DEFAULT_MOCK_MR_ENCLAVE = "1234567890abcdef" * 4  # 64 hex chars = 32 bytes
+
+# Dstack guest-agent Unix socket path (mounted via docker-compose volumes).
+DSTACK_SOCKET_PATH = "/var/run/dstack.sock"
+
+# HTTP request timeout for the dstack guest-agent (seconds).
+DSTACK_TIMEOUT = 10
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -88,16 +97,20 @@ class QuoteGenerator:
         self,
         mock: bool = True,
         mock_mr_enclave: Optional[str] = None,
+        dstack_socket: Optional[str] = None,
     ) -> None:
         """Initialise the generator.
 
         Args:
             mock: If True (default), use the local mock backend.
-                  If False, attempt to use Dstack SDK (Step 5+ only).
+                  If False, use real Dstack TDX backend via Unix socket.
             mock_mr_enclave: Override the default mock mr_enclave.
                              Must be 64 hex chars (32 bytes). Mock-only.
+            dstack_socket: Path to the dstack guest-agent Unix socket.
+                           Defaults to /var/run/dstack.sock.
         """
         self.mock = mock
+        self._dstack_socket = dstack_socket or DSTACK_SOCKET_PATH
 
         if mock_mr_enclave is None:
             mock_mr_enclave = DEFAULT_MOCK_MR_ENCLAVE
@@ -105,10 +118,17 @@ class QuoteGenerator:
         self._mr_enclave = mock_mr_enclave
 
         if not self.mock:
-            raise NotImplementedError(
-                "Real Dstack TDX backend is not implemented yet. "
-                "Set mock=True for local development. "
-                "Real backend will be added in Step 5 (Phala Cloud deploy)."
+            # Verify the socket exists — fail fast if not on a TDX CVM.
+            import os
+            if not os.path.exists(self._dstack_socket):
+                raise QuoteGenerationError(
+                    f"Dstack socket not found at {self._dstack_socket}. "
+                    f"Are you running inside a Phala Cloud TDX CVM? "
+                    f"Set mock=True for local development."
+                )
+            logger.info(
+                "Dstack TDX backend enabled — socket at %s",
+                self._dstack_socket,
             )
 
         logger.info(
@@ -145,26 +165,141 @@ class QuoteGenerator:
 
         if self.mock:
             quote_hex = self._build_mock_quote(report_data)
-        else:  # pragma: no cover — guarded in __init__
-            raise QuoteGenerationError("Real backend not implemented")
+            mr_enclave = self._mr_enclave
+            is_mock = True
+        else:
+            quote_hex, mr_enclave = self._get_dstack_quote(report_data)
+            is_mock = False
 
         result = AttestationQuote(
             quote_hex=quote_hex,
             report_data=report_data,
-            mr_enclave=self._mr_enclave,
+            mr_enclave=mr_enclave,
             timestamp=int(time.time()),
-            is_mock=self.mock,
+            is_mock=is_mock,
         )
 
         logger.info(
             "Generated %s quote (input=%s..., output=%s...)",
-            "MOCK" if self.mock else "REAL",
+            "MOCK" if is_mock else "REAL",
             bytes(input_hash).hex()[:8],
             bytes(output_hash).hex()[:8],
         )
         return result
 
-    # ── internals ──────────────────────────────────────────────────────────
+    # ── Dstack TDX backend ─────────────────────────────────────────────────
+
+    def _get_dstack_quote(self, report_data: bytes) -> tuple[str, str]:
+        """Call the dstack guest-agent via Unix socket to get a real TDX quote.
+
+        The dstack guest-agent exposes a REST API on /var/run/dstack.sock:
+            POST /GetQuote
+            Body: {"reportData": "0x<hex>"}
+            Response: {"quote": "0x<hex>"}
+
+        The report_data MUST be max 64 bytes. For the TDX driver, the actual
+        report_data is SHA-256(report_data) — but the guest-agent handles
+        that internally. We pass our 64-byte payload (input_hash||output_hash)
+        as-is.
+
+        Returns:
+            (quote_hex, mr_enclave) — both without 0x prefix.
+
+        Raises:
+            QuoteGenerationError on any failure.
+        """
+        report_data_hex = "0x" + report_data.hex()
+
+        try:
+            # Build raw HTTP request — we use a raw Unix socket because
+            # httpx/requests don't natively support UDS without extra deps.
+            body = json.dumps({"reportData": report_data_hex}).encode()
+            request = (
+                b"POST /GetQuote HTTP/1.1\r\n"
+                b"Host: dstack\r\n"
+                b"Content-Type: application/json\r\n"
+                b"Content-Length: " + str(len(body)).encode() + b"\r\n"
+                b"Connection: close\r\n"
+                b"\r\n"
+                + body
+            )
+
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(DSTACK_TIMEOUT)
+            sock.connect(self._dstack_socket)
+            sock.sendall(request)
+
+            # Read response
+            chunks = []
+            while True:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            sock.close()
+
+            raw_response = b"".join(chunks).decode("utf-8", errors="replace")
+
+            # Parse HTTP response — find the JSON body after \r\n\r\n
+            header_end = raw_response.find("\r\n\r\n")
+            if header_end == -1:
+                raise QuoteGenerationError(
+                    f"Invalid HTTP response from dstack: {raw_response[:200]}"
+                )
+            json_body = raw_response[header_end + 4:]
+
+            data = json.loads(json_body)
+            quote_raw = data.get("quote", "")
+            if not quote_raw:
+                raise QuoteGenerationError(
+                    f"No 'quote' field in dstack response: {data}"
+                )
+
+            # Strip 0x prefix if present
+            quote_hex = quote_raw.removeprefix("0x").removeprefix("0X")
+
+            # Extract mr_enclave from the TDX quote structure.
+            # In a TDX DCAP quote v4, the TD report body starts at offset 48,
+            # and MRTD (mr_enclave equivalent) is at bytes 256-304 within the
+            # report body, so absolute offset 304-352 in the quote.
+            # For our purposes, we'll use the first 32 bytes after the header
+            # as a simplified mr_enclave — the on-chain verifier does the full
+            # DCAP parsing anyway.
+            quote_bytes = bytes.fromhex(quote_hex)
+            if len(quote_bytes) < 352:
+                # Quote is too short to extract MRTD — use hash of quote
+                logger.warning(
+                    "TDX quote too short for MRTD extraction (%d bytes), "
+                    "using SHA-256 of quote as mr_enclave",
+                    len(quote_bytes),
+                )
+                mr_enclave = hashlib.sha256(quote_bytes).hexdigest()
+            else:
+                # Extract MRTD from TDX quote body (offset 304-336)
+                mr_enclave = quote_bytes[304:336].hex()
+
+            logger.info(
+                "Got real TDX quote from dstack (%d bytes, mr_enclave=%s...)",
+                len(quote_bytes), mr_enclave[:8],
+            )
+            return quote_hex, mr_enclave
+
+        except QuoteGenerationError:
+            raise
+        except json.JSONDecodeError as e:
+            raise QuoteGenerationError(
+                f"Failed to parse dstack response as JSON: {e}"
+            ) from e
+        except socket.timeout:
+            raise QuoteGenerationError(
+                f"Timeout ({DSTACK_TIMEOUT}s) waiting for dstack guest-agent"
+            ) from None
+        except OSError as e:
+            raise QuoteGenerationError(
+                f"Socket error communicating with dstack: {e}"
+            ) from e
+
+    # ── mock backend ───────────────────────────────────────────────────────
 
     @staticmethod
     def _validate_hash(value: bytes, name: str) -> None:

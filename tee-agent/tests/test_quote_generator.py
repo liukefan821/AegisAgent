@@ -14,6 +14,7 @@ from aegis_agent.quote_generator import (
     MOCK_QUOTE_MAGIC,
     REPORT_DATA_SIZE,
     AttestationQuote,
+    QuoteGenerationError,
     QuoteGenerator,
 )
 
@@ -39,9 +40,13 @@ def sample_hashes() -> tuple[bytes, bytes]:
 class TestInit:
     def test_default_is_mock(self, gen: QuoteGenerator) -> None:
         assert gen.mock is True
+    def test_real_backend_requires_socket(self) -> None:
+        """mock=False without a dstack socket raises QuoteGenerationError."""
+        with pytest.raises(QuoteGenerationError, match="not found"):
+            QuoteGenerator(mock=False)
 
-    def test_real_backend_not_implemented(self) -> None:
-        with pytest.raises(NotImplementedError, match="Step 5"):
+
+
             QuoteGenerator(mock=False)
 
     def test_default_mr_enclave(self, gen: QuoteGenerator) -> None:

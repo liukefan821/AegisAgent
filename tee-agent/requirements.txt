@@ -4,7 +4,6 @@ pydantic>=2.5.0
 pytest>=7.4.0
 pytest-cov>=4.1.0
 web3>=7.0.0,<8.0.0
-python-dotenv>=1.0.0 # 2.6 live test 会用到
 
 # HTTP server (Step 5.0)
 fastapi>=0.115.0
