@@ -54,13 +54,6 @@ export const vaultAbi = [
   },
   {
     type: "function",
-    name: "lastActionTimestamp",
-    stateMutability: "view",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
     name: "nonceOf",
     stateMutability: "view",
     inputs: [{ name: "user", type: "address" }],
