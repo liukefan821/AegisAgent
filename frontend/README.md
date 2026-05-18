@@ -30,8 +30,8 @@ NEXT_PUBLIC_VAULT_ADDRESS=
 NEXT_PUBLIC_VERIFIER_ADDRESS=
 ```
 
-`NEXT_PUBLIC_USE_MOCK=true` is the recommended local demo mode when deployed
-Sepolia contracts are not available yet.
+`NEXT_PUBLIC_USE_MOCK=true` is the recommended local demo mode while the
+Sepolia contracts are not yet available.
 
 ## Structure
 
