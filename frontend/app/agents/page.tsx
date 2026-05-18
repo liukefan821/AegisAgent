@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { ErrorCard } from "@/components/error-card";
 import { AgentRowSkeleton } from "@/components/loading-states";
@@ -160,20 +160,17 @@ function AgentAuthorizationRow({
   const isChecking = authorization.isLoading;
   const isStatusDismissed =
     !!dismissedTxHash && dismissedTxHash === authorize.txHash;
-  const authorizeStatus = useMemo(
-    () => ({
-      ...authorize,
-      reset: () => {
-        if (authorize.isSuccess) {
-          setDismissedTxHash(authorize.txHash);
-          return;
-        }
+  const authorizeStatus = {
+    ...authorize,
+    reset: () => {
+      if (authorize.isSuccess) {
+        setDismissedTxHash(authorize.txHash);
+        return;
+      }
 
-        authorize.reset();
-      },
-    }),
-    [authorize]
-  );
+      authorize.reset();
+    },
+  };
 
   useEffect(() => {
     if (!authorize.isSuccess) {
@@ -216,7 +213,10 @@ function AgentAuthorizationRow({
           variant={isAuthorized ? "secondary" : "outline"}
           className="w-full sm:w-auto"
           disabled={isAuthorized || isChecking || isBusy}
-          onClick={() => authorize.submit(mrEnclave)}
+          onClick={() => {
+            setDismissedTxHash(undefined);
+            authorize.submit(mrEnclave);
+          }}
         >
           {isAuthorized
             ? "Authorized"
