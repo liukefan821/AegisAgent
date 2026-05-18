@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { ErrorCard } from "@/components/error-card";
 import { AgentRowSkeleton } from "@/components/loading-states";
@@ -144,6 +144,7 @@ function AgentAuthorizationRow({
 }) {
   const authorization = useAgentAuthorization(user, mrEnclave);
   const authorize = useAuthorizeAgent();
+  const [dismissedTxHash, setDismissedTxHash] = useState<string | undefined>();
   const writeRefs = useRef({
     authorizationRefetch: authorization.refetch,
     authorizeReset: authorize.reset,
@@ -157,6 +158,22 @@ function AgentAuthorizationRow({
   const isAuthorized = authorization.data === true || authorize.isSuccess;
   const isBusy = authorize.isPending || authorize.isConfirming;
   const isChecking = authorization.isLoading;
+  const isStatusDismissed =
+    !!dismissedTxHash && dismissedTxHash === authorize.txHash;
+  const authorizeStatus = useMemo(
+    () => ({
+      ...authorize,
+      reset: () => {
+        if (authorize.isSuccess) {
+          setDismissedTxHash(authorize.txHash);
+          return;
+        }
+
+        authorize.reset();
+      },
+    }),
+    [authorize]
+  );
 
   useEffect(() => {
     if (!authorize.isSuccess) {
@@ -208,17 +225,18 @@ function AgentAuthorizationRow({
               : writeButtonLabel(authorize, "Authorize")}
         </Button>
       </div>
-      <WriteStatus
-        write={authorize}
-        showDismiss={!authorize.isSuccess}
-        successMessage={`Successfully authorized ${agentName}.`}
-        successDetail={
-          <span>
-            MR_ENCLAVE:{" "}
-            <span className="break-all font-mono text-xs">{mrEnclave}</span>
-          </span>
-        }
-      />
+      {isStatusDismissed ? null : (
+        <WriteStatus
+          write={authorizeStatus}
+          successMessage={`Successfully authorized ${agentName}.`}
+          successDetail={
+            <span>
+              MR_ENCLAVE:{" "}
+              <span className="break-all font-mono text-xs">{mrEnclave}</span>
+            </span>
+          }
+        />
+      )}
     </div>
   );
 }
