@@ -242,7 +242,7 @@ class DecisionEngine:
 
         # ── 5. Generate attestation quote ────────────────────────────────
         # report_data layout: actionHash (32B) || output_hash (32B)
-        # input_hash is folded into actionHash, saved separately in QuoteStore
+        # input_hash is saved separately in QuoteStore for audit.
         output_hash_bytes = bytes.fromhex(llm_result.output_hash.removeprefix("0x"))
         input_hash_bytes = bytes.fromhex(llm_result.input_hash.removeprefix("0x"))
 

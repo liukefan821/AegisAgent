@@ -67,8 +67,8 @@ class QuoteStore:
     """Module-level singleton mapping keccak256(quote) -> AttestationQuote.
 
     Step 6: also stores the real input_hash separately, since report_data[0:32]
-    is now actionHash (input_hash is folded into actionHash and no longer
-    directly recoverable from report_data).
+    is now actionHash. input_hash is audit metadata and is no longer directly
+    recoverable from report_data.
     """
 
     def __init__(self) -> None:
@@ -220,7 +220,7 @@ def get_quote(digest: str) -> QuoteResponse:
     action_hash_bytes = report_data[:HASH_SIZE]
     output_hash_bytes = report_data[HASH_SIZE:]
 
-    # input_hash is stored separately (folded into actionHash, not in report_data)
+    # input_hash is stored separately for audit; it is not in report_data.
     stored_input_hash = get_store().get_input_hash(normalised)
     if stored_input_hash is not None:
         input_hash_hex = "0x" + stored_input_hash.hex()
