@@ -47,7 +47,7 @@ Respond ONLY with valid JSON (no markdown, no explanation outside JSON):
 {
   "action": "HOLD" or "TRANSFER",
   "amount_wei": 0,
-  "target": "0x0000000000000000000000000000000000000000",
+  "target": "0x0",
   "reasoning": "brief explanation"
 }"""
 
@@ -192,6 +192,7 @@ class DecisionEngine:
             prompt=prompt,
             system=SYSTEM_PROMPT,
             json_mode=True,
+            max_tokens=1024,
             temperature=0.1,
         )
         logger.info(
@@ -215,6 +216,7 @@ class DecisionEngine:
         action = parsed.get("action", "HOLD").upper()
         amount_wei = int(parsed.get("amount_wei", 0))
         target = parsed.get("target", ZERO_ADDRESS)
+        if target.startswith("0x") and len(target) < 42: target = target[:2] + target[2:].zfill(40)
         reasoning = parsed.get("reasoning", "")
 
         # Safety: clamp invalid decisions
