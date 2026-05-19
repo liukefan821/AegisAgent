@@ -49,12 +49,14 @@ function splitHexLines(hex: string, width: number = 64): string[] {
 
 function FieldRow({
   label,
+  description,
   value,
   copyKey,
   copiedKey,
   onCopy,
 }: {
   label: string;
+  description?: string;
   value: string;
   copyKey: string;
   copiedKey: string | null;
@@ -64,8 +66,11 @@ function FieldRow({
 
   return (
     <div className="grid gap-1 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[9rem_minmax(0,1fr)_auto] sm:items-center">
-      <dt className="text-xs font-medium uppercase text-muted-foreground">
-        {label}
+      <dt className="space-y-1 text-xs text-muted-foreground">
+        <span className="block font-medium uppercase">{label}</span>
+        {description ? (
+          <span className="block normal-case leading-snug">{description}</span>
+        ) : null}
       </dt>
       <dd
         className="overflow-x-auto font-mono text-xs text-foreground"
@@ -170,6 +175,14 @@ export function AttestationModal({
           <section className="space-y-3">
             <h3 className="text-sm font-medium">Decoded Fields</h3>
             <dl className="space-y-2">
+              <FieldRow
+                label="Action Hash"
+                description="Binds quote to on-chain action"
+                value={quoteData.action_hash}
+                copyKey="action_hash"
+                copiedKey={copiedKey}
+                onCopy={handleCopy}
+              />
               <FieldRow
                 label="MR_ENCLAVE"
                 value={quoteData.mr_enclave}

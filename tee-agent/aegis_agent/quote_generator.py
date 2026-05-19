@@ -1,9 +1,10 @@
 """
 quote_generator.py — TDX attestation quote generator for AegisAgent
 
-Wraps an agent decision (input_hash, output_hash) into a TEE attestation
+Wraps an agent decision hash pair into a TEE attestation
 quote that the on-chain AegisVerifier can verify. The quote commits to:
-  - report_data = input_hash || output_hash  (64 bytes)
+  - report_data = first_hash || output_hash  (64 bytes)
+    Step 6 passes actionHash as first_hash.
   - mr_enclave  = hash of the LLM model image (matches AegisRegistry)
 
 Two backends are supported:
@@ -13,7 +14,7 @@ Two backends are supported:
              from production ones.
   - DSTACK : real Intel TDX quotes via the dstack guest-agent Unix socket
              on Phala Cloud. Calls POST /GetQuote on /var/run/dstack.sock
-             with report_data = SHA-256(input_hash || output_hash).
+             with the caller-provided 64-byte report_data payload.
 
 This module is the *only* component allowed to mint attestation quotes.
 All other agent modules call QuoteGenerator.generate() so every decision
@@ -36,7 +37,8 @@ logger = logging.getLogger(__name__)
 # Constants
 # ────────────────────────────────────────────────────────────────────────────
 
-# TDX report_data is exactly 64 bytes. We pack: input_hash || output_hash.
+# TDX report_data is exactly 64 bytes.
+# Step 6 packs: actionHash || output_hash.
 REPORT_DATA_SIZE = 64
 HASH_SIZE = 32
 
@@ -69,7 +71,7 @@ class AttestationQuote:
 
     Attributes:
         quote_hex:   hex-encoded TDX quote bytes (no '0x' prefix).
-        report_data: 64-byte payload = input_hash || output_hash.
+        report_data: 64-byte payload. Step 6 uses actionHash || output_hash.
         mr_enclave:  32-byte hex identifying the LLM model image.
         timestamp:   Unix time when the quote was generated.
         is_mock:     True if produced by the mock backend.
@@ -90,7 +92,7 @@ class QuoteGenerator:
 
     The generated quote can be submitted to AegisVerifier.verifyDecision()
     on Sepolia, where the on-chain logic checks the Intel PCK signature
-    and extracts input_hash / output_hash from the report_data field.
+    and binds a quote to the caller-provided report_data field.
     """
 
     def __init__(
@@ -147,7 +149,8 @@ class QuoteGenerator:
         """Generate an attestation quote for the given decision hashes.
 
         Args:
-            input_hash:  32-byte SHA-256 of the agent's input prompt.
+            input_hash:  32-byte first report_data field. In Step 6 this is
+                         actionHash, not the LLM input hash.
             output_hash: 32-byte SHA-256 of the agent's output decision.
 
         Returns:
@@ -199,7 +202,7 @@ class QuoteGenerator:
 
         The report_data MUST be max 64 bytes. For the TDX driver, the actual
         report_data is SHA-256(report_data) — but the guest-agent handles
-        that internally. We pass our 64-byte payload (input_hash||output_hash)
+        that internally. We pass our caller-provided 64-byte payload
         as-is.
 
         Returns:

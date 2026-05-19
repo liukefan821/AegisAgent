@@ -22,22 +22,26 @@ export type Bytes32 = `0x${string}`;
 // ────────────────────────────────────────────────────────────────────
 
 /**
- * Mirror of `quote_generator.AttestationQuote` (Python dataclass).
+ * Mirror of tee-agent `GET /quotes/{digest}`.
  *
- * Field names match Python exactly.
- * The `is_mock` flag IS part of the schema.
+ * Field names match the FastAPI response exactly.
+ * The `is_mock` flag is part of the response schema.
  */
 export interface AttestationQuote {
   quote_hex: string;
   report_data: Hex;
   /**
-   * First 32 bytes of report_data. Pre-split server-side by tee-agent's
-   * `GET /quotes/{digest}` endpoint so the frontend doesn't slice bytes itself.
+   * report_data[0:32]. Binds the quote to a specific on-chain action:
+   * keccak256(abi.encode(user, amount, target, nonce, timestamp)).
+   */
+  action_hash: Hex;
+  /**
+   * SHA-256 of the LLM input. Stored separately by tee-agent for audit;
+   * it is not part of report_data after Step 6.
    */
   input_hash: Hex;
   /**
-   * Last 32 bytes of report_data. Pre-split server-side by tee-agent's
-   * `GET /quotes/{digest}` endpoint.
+   * report_data[32:64]. SHA-256 of the LLM output.
    */
   output_hash: Hex;
   mr_enclave: string;
