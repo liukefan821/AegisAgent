@@ -1,7 +1,7 @@
 """
 http_server.py — FastAPI HTTP server for AegisAgent TEE Agent
 
-Exposes two read-only endpoints for the frontend:
+Exposes read-only endpoints for the frontend:
   - GET /health           — liveness + status panel (interfaces.md §4.1)
   - GET /quotes/{digest}  — reverse-lookup full quote by on-chain digest
 
@@ -11,8 +11,12 @@ mr_enclave / report_data / timestamp, so the agent keeps an in-memory
 digest -> AttestationQuote map and serves it here.
 
 The QuoteStore is a module-level singleton. The decision engine (Step 6)
-will call get_store().put(quote) immediately after quote_generator mints
-a quote, making the digest queryable before the on-chain tx is mined.
+calls get_store().put(quote, input_hash=...) after generating a quote,
+making the digest queryable before the on-chain tx is mined.
+
+Step 6 update: report_data layout changed from input_hash||output_hash
+to actionHash||output_hash. The real input_hash is saved separately in
+QuoteStore and returned in the API response for audit purposes.
 """
 
 from __future__ import annotations
@@ -47,22 +51,29 @@ class QuoteResponse(BaseModel):
     digest: str = Field(..., description="0x-prefixed keccak256(quote)")
     quote_hex: str = Field(..., description="0x-prefixed full TDX quote bytes")
     mr_enclave: str = Field(..., description="0x-prefixed 32-byte enclave measurement")
-    report_data: str = Field(..., description="0x-prefixed 64B input_hash||output_hash")
-    input_hash: str
-    output_hash: str
+    report_data: str = Field(..., description="0x-prefixed 64B raw report_data")
+    action_hash: str = Field(..., description="0x-prefixed report_data[0:32] — binds quote to on-chain action")
+    input_hash: str = Field(..., description="0x-prefixed SHA-256 of LLM input (stored separately)")
+    output_hash: str = Field(..., description="0x-prefixed report_data[32:64]")
     timestamp: int
     is_mock: bool
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# QuoteStore — in-memory digest -> AttestationQuote
+# QuoteStore — in-memory digest -> AttestationQuote + metadata
 # ────────────────────────────────────────────────────────────────────────────
 
 class QuoteStore:
-    """Module-level singleton mapping keccak256(quote) -> AttestationQuote."""
+    """Module-level singleton mapping keccak256(quote) -> AttestationQuote.
+
+    Step 6: also stores the real input_hash separately, since report_data[0:32]
+    is now actionHash (input_hash is folded into actionHash and no longer
+    directly recoverable from report_data).
+    """
 
     def __init__(self) -> None:
         self._records: Dict[str, AttestationQuote] = {}
+        self._input_hashes: Dict[str, bytes] = {}
 
     @staticmethod
     def digest_for(quote: AttestationQuote) -> str:
@@ -70,13 +81,29 @@ class QuoteStore:
         quote_bytes = bytes.fromhex(quote.quote_hex)
         return "0x" + keccak(quote_bytes).hex()
 
-    def put(self, quote: AttestationQuote) -> str:
-        """Store a quote under its on-chain digest. Returns the digest."""
+    def put(
+        self,
+        quote: AttestationQuote,
+        *,
+        input_hash: Optional[bytes] = None,
+    ) -> str:
+        """Store a quote under its on-chain digest.
+
+        Args:
+            quote: The attestation quote to store.
+            input_hash: (Step 6) The real LLM input_hash, saved separately
+                        because report_data[0:32] is now actionHash.
+
+        Returns:
+            The 0x-prefixed keccak256 digest.
+        """
         digest = self.digest_for(quote)
         self._records[digest] = quote
+        if input_hash is not None:
+            self._input_hashes[digest] = input_hash
         logger.info(
-            "Stored quote digest=%s... (total=%d)",
-            digest[:10], len(self._records),
+            "Stored quote digest=%s... (total=%d, has_input_hash=%s)",
+            digest[:10], len(self._records), input_hash is not None,
         )
         return digest
 
@@ -85,6 +112,13 @@ class QuoteStore:
         if not digest.startswith("0x"):
             digest = "0x" + digest
         return self._records.get(digest)
+
+    def get_input_hash(self, digest: str) -> Optional[bytes]:
+        """Retrieve the separately-stored LLM input_hash for a quote."""
+        digest = digest.lower()
+        if not digest.startswith("0x"):
+            digest = "0x" + digest
+        return self._input_hashes.get(digest)
 
     def __len__(self) -> int:
         return len(self._records)
@@ -95,7 +129,7 @@ class QuoteStore:
         return max(q.timestamp for q in self._records.values())
 
 
-# Module-level singleton — orchestrator/decision_engine call put() here.
+# Module-level singleton — decision_engine calls put() here.
 _store = QuoteStore()
 
 
@@ -129,13 +163,12 @@ def _probe_ollama(timeout: float = 2.0) -> str:
 
 app = FastAPI(
     title="AegisAgent TEE Agent",
-    version="0.1.0",
+    version="0.2.0",
     description="Read-only HTTP API for enclave status and attestation quote lookup.",
 )
 
 
 # CORS — frontend (Next.js dev server on :3000) calls this API on :8080.
-# Tighten allow_origins for prod / Phala Cloud deploy in Step 5.1.
 from fastapi.middleware.cors import CORSMiddleware
 
 _FRONTEND_ORIGINS = os.getenv(
@@ -166,7 +199,11 @@ def health() -> HealthResponse:
 
 @app.get("/quotes/{digest}", response_model=QuoteResponse)
 def get_quote(digest: str) -> QuoteResponse:
-    """Reverse-lookup a full quote by its on-chain keccak256(quote) digest."""
+    """Reverse-lookup a full quote by its on-chain keccak256(quote) digest.
+
+    Step 6 update: response now includes action_hash (report_data[0:32])
+    and input_hash (stored separately in QuoteStore, not from report_data).
+    """
     normalised = digest.lower()
     if not normalised.startswith("0x"):
         normalised = "0x" + normalised
@@ -179,16 +216,27 @@ def get_quote(digest: str) -> QuoteResponse:
         )
 
     report_data = quote.report_data
-    input_hash = report_data[:HASH_SIZE]
-    output_hash = report_data[HASH_SIZE:]
+    # Step 6: report_data[0:32] = actionHash, report_data[32:64] = output_hash
+    action_hash_bytes = report_data[:HASH_SIZE]
+    output_hash_bytes = report_data[HASH_SIZE:]
+
+    # input_hash is stored separately (folded into actionHash, not in report_data)
+    stored_input_hash = get_store().get_input_hash(normalised)
+    if stored_input_hash is not None:
+        input_hash_hex = "0x" + stored_input_hash.hex()
+    else:
+        # Backward compat: old quotes without separate input_hash
+        # Fall back to report_data[0:32] (which was input_hash before Step 6)
+        input_hash_hex = "0x" + action_hash_bytes.hex()
 
     return QuoteResponse(
         digest=normalised,
         quote_hex="0x" + quote.quote_hex,
         mr_enclave="0x" + quote.mr_enclave,
         report_data="0x" + report_data.hex(),
-        input_hash="0x" + input_hash.hex(),
-        output_hash="0x" + output_hash.hex(),
+        action_hash="0x" + action_hash_bytes.hex(),
+        input_hash=input_hash_hex,
+        output_hash="0x" + output_hash_bytes.hex(),
         timestamp=quote.timestamp,
         is_mock=quote.is_mock,
     )
