@@ -73,9 +73,9 @@ function assertBytes32(value: Bytes32, name: string): void {
   }
 }
 
-function assertAddress(value: Address): void {
+function assertAddress(value: Address, name: string): void {
   if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
-    throw new Error("Address must be a 20-byte hex value.");
+    throw new Error(`${name} must be a 20-byte hex value.`);
   }
 }
 
@@ -86,8 +86,8 @@ function assertHex(value: Hex, name: string): void {
 }
 
 function buildExecuteActionArgs(decision: AgentDecision) {
-  assertAddress(decision.user);
-  assertAddress(decision.target);
+  assertAddress(decision.user, "Decision user");
+  assertAddress(decision.target, "Decision target");
   assertBytes32(decision.action_hash, "Action hash");
   assertHex(decision.quote_hex, "Quote");
 

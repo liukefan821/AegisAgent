@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from typing import Protocol
 
 from dotenv import load_dotenv
@@ -40,6 +41,7 @@ def configured_model() -> str:
     return os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
 
 
+@lru_cache(maxsize=1)
 def create_llm_client() -> LLMClient:
     provider = configured_provider()
     if provider == "gemini":

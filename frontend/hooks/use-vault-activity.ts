@@ -9,6 +9,7 @@ import type { Address, Hex, HookResult, VaultActivityItem } from "@/lib/types";
 
 const DEFAULT_VAULT_DEPLOY_BLOCK = 10_879_000n;
 const ACTIVITY_REFETCH_MS = 12_000;
+const LOG_CHUNK_SIZE = 5_000n;
 const ACTION_EXECUTED_EVENT = parseAbiItem(
   "event ActionExecuted(address indexed user, bytes32 indexed mrEnclave, bytes32 quoteDigest, uint256 amount, uint256 timestamp)"
 );
@@ -30,6 +31,23 @@ function vaultDeployBlock(): bigint {
   } catch {
     return DEFAULT_VAULT_DEPLOY_BLOCK;
   }
+}
+
+function blockRanges(fromBlock: bigint, toBlock: bigint) {
+  const ranges: Array<{ fromBlock: bigint; toBlock: bigint }> = [];
+  if (fromBlock > toBlock) {
+    return ranges;
+  }
+
+  for (let start = fromBlock; start <= toBlock; start += LOG_CHUNK_SIZE) {
+    const end = start + LOG_CHUNK_SIZE - 1n;
+    ranges.push({
+      fromBlock: start,
+      toBlock: end > toBlock ? toBlock : end,
+    });
+  }
+
+  return ranges;
 }
 
 function mockActivity(): VaultActivityItem[] {
@@ -60,29 +78,47 @@ export function useVaultActivity(user?: Address): HookResult<VaultActivityItem[]
       }
 
       const fromBlock = vaultDeployBlock();
-      const [actionLogs, depositLogs, withdrawLogs] = await Promise.all([
-        publicClient.getLogs({
-          address: CONTRACTS.vault,
-          event: ACTION_EXECUTED_EVENT,
-          args: { user },
-          fromBlock,
-          toBlock: "latest",
-        }),
-        publicClient.getLogs({
-          address: CONTRACTS.vault,
-          event: DEPOSITED_EVENT,
-          args: { user },
-          fromBlock,
-          toBlock: "latest",
-        }),
-        publicClient.getLogs({
-          address: CONTRACTS.vault,
-          event: WITHDRAWN_EVENT,
-          args: { user },
-          fromBlock,
-          toBlock: "latest",
-        }),
+      const latestBlock = await publicClient.getBlockNumber();
+      const ranges = blockRanges(fromBlock, latestBlock);
+
+      const [actionLogPages, depositLogPages, withdrawLogPages] = await Promise.all([
+        Promise.all(
+          ranges.map((range) =>
+            publicClient.getLogs({
+              address: CONTRACTS.vault,
+              event: ACTION_EXECUTED_EVENT,
+              args: { user },
+              fromBlock: range.fromBlock,
+              toBlock: range.toBlock,
+            })
+          )
+        ),
+        Promise.all(
+          ranges.map((range) =>
+            publicClient.getLogs({
+              address: CONTRACTS.vault,
+              event: DEPOSITED_EVENT,
+              args: { user },
+              fromBlock: range.fromBlock,
+              toBlock: range.toBlock,
+            })
+          )
+        ),
+        Promise.all(
+          ranges.map((range) =>
+            publicClient.getLogs({
+              address: CONTRACTS.vault,
+              event: WITHDRAWN_EVENT,
+              args: { user },
+              fromBlock: range.fromBlock,
+              toBlock: range.toBlock,
+            })
+          )
+        ),
       ]);
+      const actionLogs = actionLogPages.flat();
+      const depositLogs = depositLogPages.flat();
+      const withdrawLogs = withdrawLogPages.flat();
 
       const blocks = Array.from(
         new Set(

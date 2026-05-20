@@ -66,8 +66,14 @@ class QuoteResponse(BaseModel):
 
 class DecisionRequest(BaseModel):
     user: str = Field(..., description="0x-prefixed user wallet address")
-    balance_wei: int = Field(..., ge=0, description="Current vault balance in wei")
-    nonce: int = Field(..., ge=0, description="Current AegisVault nonce for user")
+    balance_wei: int | str = Field(
+        ...,
+        description="Current vault balance in wei, preferably as a decimal string.",
+    )
+    nonce: int | str = Field(
+        ...,
+        description="Current AegisVault nonce, preferably as a decimal string.",
+    )
     mock_price: Optional[str] = Field(
         None,
         description="Optional ETH/USD price override; if omitted, Chainlink is used when configured.",
@@ -101,6 +107,21 @@ class DecisionResponse(BaseModel):
     output_hash: str
     eth_usd_price: str
     chainlink_round_id: int
+
+
+def _parse_nonnegative_int(value: int | str, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a non-negative integer")
+
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"{field_name} must be a non-negative integer") from e
+
+    if parsed < 0:
+        raise ValueError(f"{field_name} must be a non-negative integer")
+
+    return parsed
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -311,6 +332,9 @@ def create_decision(request: DecisionRequest) -> DecisionResponse:
         )
 
     try:
+        balance_wei = _parse_nonnegative_int(request.balance_wei, "balance_wei")
+        nonce = _parse_nonnegative_int(request.nonce, "nonce")
+
         from aegis_agent.chainlink_feed import ChainlinkFeed, ChainlinkFeedError
         from aegis_agent.decision_engine import DecisionEngine
         from aegis_agent.llm_client import create_llm_client
@@ -339,8 +363,8 @@ def create_decision(request: DecisionRequest) -> DecisionResponse:
         )
         result = engine.decide(
             user=request.user,
-            balance_wei=request.balance_wei,
-            nonce=request.nonce,
+            balance_wei=balance_wei,
+            nonce=nonce,
             mock_price=request.mock_price,
             demo_action=request.demo_action,
             demo_transfer_bps=request.demo_transfer_bps,

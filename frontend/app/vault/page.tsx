@@ -58,6 +58,7 @@ export default function VaultPage() {
     balance: balance.refetch,
     nonce: nonce.refetch,
   });
+  const decisionAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
     refetchVaultReads.current = {
       balance: balance.refetch,
@@ -94,6 +95,10 @@ export default function VaultPage() {
     setLastDecisionMode(mode);
     setActiveDecisionMode(mode);
     setIsRequestingDecision(true);
+    decisionAbortRef.current?.abort();
+    const abortController = new AbortController();
+    decisionAbortRef.current = abortController;
+
     try {
       const body: Record<string, string | number> = {
         user: address,
@@ -111,27 +116,49 @@ export default function VaultPage() {
       const res = await fetch(`${AGENT_URL}/decisions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortController.signal,
         body: JSON.stringify(body),
       });
+
+      if (abortController.signal.aborted) {
+        return;
+      }
 
       if (!res.ok) {
         throw new Error(`Decision request failed: ${res.status}`);
       }
 
       const nextDecision = (await res.json()) as AgentDecision;
+      if (abortController.signal.aborted) {
+        return;
+      }
+
       setDecision(nextDecision);
 
       if (!executeAction.submit(nextDecision)) {
         setDecisionError(new Error("Decision could not be submitted."));
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
       setDecisionError(
         error instanceof Error ? error : new Error("Decision request failed.")
       );
     } finally {
-      setIsRequestingDecision(false);
+      if (decisionAbortRef.current === abortController) {
+        decisionAbortRef.current = null;
+        setIsRequestingDecision(false);
+      }
     }
   };
+
+  useEffect(() => {
+    return () => {
+      decisionAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!deposit.isSuccess) {

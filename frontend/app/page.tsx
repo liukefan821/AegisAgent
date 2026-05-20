@@ -26,6 +26,10 @@ import type { VaultActivityItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatEth, formatTimestamp, shortHex } from "@/lib/utils/format";
 
+function activityItemKey(item: VaultActivityItem): string {
+  return `${item.transaction_hash}-${item.kind}-${item.block_number.toString()}`;
+}
+
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
   const balance = useVaultBalance(address);
@@ -166,7 +170,7 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-3">
               {recentActivity.map((item) => (
-                <RecentActivityRow key={item.transaction_hash} item={item} />
+                <RecentActivityRow key={activityItemKey(item)} item={item} />
               ))}
             </div>
           )}

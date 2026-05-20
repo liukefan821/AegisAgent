@@ -70,7 +70,7 @@ Respond ONLY with valid JSON (no markdown, no explanation outside JSON):
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
 # Action expiry: seconds into the future for the on-chain timestamp deadline
-ACTION_EXPIRY_SECONDS = 300  # 5 minutes
+ACTION_EXPIRY_SECONDS = 900  # 15 minutes for wallet confirmation during demos
 
 
 # ────────────────────────────────────────────────────────────────────────────

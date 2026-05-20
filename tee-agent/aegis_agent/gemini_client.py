@@ -33,21 +33,25 @@ class GeminiClient:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.session = requests.Session()
 
     def _model_path(self) -> str:
         return self.model if self.model.startswith("models/") else f"models/{self.model}"
 
     def _url(self, method: str) -> str:
-        return f"{self.base_url}/{self._model_path()}:{method}?key={self.api_key}"
+        return f"{self.base_url}/{self._model_path()}:{method}"
+
+    def _headers(self) -> dict[str, str]:
+        return {"x-goog-api-key": self.api_key}
 
     def health_check(self) -> bool:
         """Return True if the API key can access the configured Gemini model."""
         if not self.api_key:
             return False
         try:
-            resp = requests.get(
+            resp = self.session.get(
                 f"{self.base_url}/{self._model_path()}",
-                params={"key": self.api_key},
+                headers=self._headers(),
                 timeout=5,
             )
             return resp.status_code == 200
@@ -95,8 +99,9 @@ class GeminiClient:
 
         for attempt in range(MAX_RETRIES):
             try:
-                resp = requests.post(
+                resp = self.session.post(
                     self._url("generateContent"),
+                    headers=self._headers(),
                     json=payload,
                     timeout=self.timeout,
                 )

@@ -39,6 +39,10 @@ interface ActivityFilters {
   to: string;
 }
 
+function activityItemKey(item: VaultActivityItem): string {
+  return `${item.transaction_hash}-${item.kind}-${item.block_number.toString()}`;
+}
+
 const DEFAULT_FILTERS: ActivityFilters = {
   time: "all",
   kinds: [],
@@ -125,7 +129,7 @@ export default function ActivityPage() {
             <>
               <div className="divide-y md:hidden">
                 {filteredItems.map((item) => (
-                  <ActivityMobileRow key={item.transaction_hash} item={item} />
+                  <ActivityMobileRow key={activityItemKey(item)} item={item} />
                 ))}
               </div>
 
@@ -147,7 +151,7 @@ export default function ActivityPage() {
                   <tbody>
                     {filteredItems.map((item) => (
                       <ActivityTableRow
-                        key={item.transaction_hash}
+                        key={activityItemKey(item)}
                         item={item}
                       />
                     ))}
