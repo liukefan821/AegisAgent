@@ -169,7 +169,6 @@ class DecisionEngine:
         *,
         mock_price: Optional[str] = None,
         demo_action: Optional[str] = None,
-        demo_target: Optional[str] = None,
         demo_transfer_bps: int = 2500,
     ) -> DecisionResult:
         """Run the full decision pipeline.
@@ -214,7 +213,6 @@ class DecisionEngine:
                 action=demo_action,
                 user=user,
                 balance_wei=balance_wei,
-                target=demo_target,
                 transfer_bps=demo_transfer_bps,
             )
             llm_result = self._build_demo_llm_response(prompt, parsed)
@@ -327,7 +325,6 @@ class DecisionEngine:
         action: str,
         user: str,
         balance_wei: int,
-        target: Optional[str],
         transfer_bps: int,
     ) -> dict:
         """Build a deterministic demo decision without trusting prompt output."""
@@ -343,13 +340,12 @@ class DecisionEngine:
                 "reasoning": "Demo override: keep funds in the vault.",
             }
 
-        safe_target = target or user
         bps = max(0, min(transfer_bps, 10_000))
         amount_wei = balance_wei * bps // 10_000
         return {
             "action": "TRANSFER",
             "amount_wei": amount_wei,
-            "target": safe_target,
+            "target": user,
             "reasoning": (
                 f"Demo override: transfer {bps / 100:.2f}% of the vault "
                 "balance to the configured safe wallet."

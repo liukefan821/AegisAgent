@@ -105,7 +105,6 @@ export default function VaultPage() {
       }
       if (mode === "demo-transfer") {
         body.demo_action = "TRANSFER";
-        body.demo_target = address;
         body.demo_transfer_bps = 2500;
       }
 

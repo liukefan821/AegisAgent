@@ -67,9 +67,9 @@ function parsePositiveEth(amount: string): bigint {
   return value;
 }
 
-function assertBytes32(value: Bytes32): void {
+function assertBytes32(value: Bytes32, name: string): void {
   if (!BYTES32_RE.test(value)) {
-    throw new Error("MR_ENCLAVE must be a 32-byte hex value.");
+    throw new Error(`${name} must be a 32-byte hex value.`);
   }
 }
 
@@ -88,7 +88,7 @@ function assertHex(value: Hex, name: string): void {
 function buildExecuteActionArgs(decision: AgentDecision) {
   assertAddress(decision.user);
   assertAddress(decision.target);
-  assertBytes32(decision.action_hash);
+  assertBytes32(decision.action_hash, "Action hash");
   assertHex(decision.quote_hex, "Quote");
 
   let amount: bigint;
@@ -335,11 +335,11 @@ export function useAuthorizeAgent(): WriteHookResult<[mrEnclave: Bytes32]> {
   const submit = useCallback(
     (nextMrEnclave: Bytes32) => {
       if (IS_MOCK) {
-        return mock.submit(() => assertBytes32(nextMrEnclave));
+        return mock.submit(() => assertBytes32(nextMrEnclave, "MR_ENCLAVE"));
       }
 
       return submitLive(() => {
-        assertBytes32(nextMrEnclave);
+        assertBytes32(nextMrEnclave, "MR_ENCLAVE");
         return {
           args: [nextMrEnclave],
         };

@@ -76,10 +76,6 @@ class DecisionRequest(BaseModel):
         None,
         description='Optional demo override: "HOLD" or "TRANSFER". Bypasses only the AI choice.',
     )
-    demo_target: Optional[str] = Field(
-        None,
-        description="Optional safe target address for demo TRANSFER. Defaults to the user address.",
-    )
     demo_transfer_bps: int = Field(
         2500,
         ge=0,
@@ -305,6 +301,15 @@ def create_decision(request: DecisionRequest) -> DecisionResponse:
     The quote is also saved in QuoteStore, so /quotes/{quote_digest} can be
     queried immediately after this call.
     """
+    if request.demo_action is not None and request.demo_action.upper() not in (
+        "HOLD",
+        "TRANSFER",
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail='demo_action must be "HOLD" or "TRANSFER"',
+        )
+
     try:
         from aegis_agent.chainlink_feed import ChainlinkFeed, ChainlinkFeedError
         from aegis_agent.decision_engine import DecisionEngine
@@ -338,12 +343,19 @@ def create_decision(request: DecisionRequest) -> DecisionResponse:
             nonce=request.nonce,
             mock_price=request.mock_price,
             demo_action=request.demo_action,
-            demo_target=request.demo_target,
             demo_transfer_bps=request.demo_transfer_bps,
         )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("Invalid decision request: %s", e)
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.exception("Decision generation failed")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(
+            status_code=500,
+            detail="Decision generation failed",
+        ) from e
 
     return DecisionResponse(
         action=result.action,

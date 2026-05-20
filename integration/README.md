@@ -35,13 +35,13 @@ the base URL.
   "balance_wei": "10000000000000000",
   "nonce": "0",
   "demo_action": "TRANSFER",
-  "demo_target": "0x...",
   "demo_transfer_bps": 2500
 }
 ```
 
-`demo_action`, `demo_target`, and `demo_transfer_bps` are optional. They are used
-only for deterministic demo paths.
+`demo_action` and `demo_transfer_bps` are optional. They are used only for
+deterministic demo paths. Demo transfers still use the emergency safe wallet as
+the destination.
 
 ### `/decisions` response
 
@@ -162,4 +162,3 @@ Use this checklist after changing any integration boundary:
 - `docs/interfaces.md` is an earlier interface draft and may contain stale
   function names. Prefer this README plus the current source code for live demo
   integration checks.
-

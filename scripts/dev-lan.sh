@@ -41,7 +41,7 @@ ensure_port_free() {
   fi
 }
 
-LAN_IP="$(detect_lan_ip)"
+LAN_IP="$(detect_lan_ip || true)"
 if [[ -z "$LAN_IP" ]]; then
   echo "Could not detect a LAN IP. Rerun with LAN_IP=<your-ip> $0" >&2
   exit 1
