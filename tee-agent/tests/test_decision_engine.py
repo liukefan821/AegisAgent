@@ -236,7 +236,21 @@ class TestDecisionEngine:
 
         assert result.action == "TRANSFER"
         assert result.amount_wei == 500000
-        assert result.target == DEMO_TARGET
+        assert result.target == DEMO_USER
+
+    def test_transfer_target_forced_to_emergency_safe(self):
+        """The model can choose TRANSFER and amount, but not destination."""
+        resp = _make_mock_llm_response(action="TRANSFER", amount=500000)
+        engine = self._make_engine(resp)
+
+        result = engine.decide(
+            user=DEMO_USER, balance_wei=DEMO_BALANCE,
+            nonce=DEMO_NONCE, mock_price="1800.00",
+        )
+
+        assert DEMO_TARGET in resp.response
+        assert result.action == "TRANSFER"
+        assert result.target == DEMO_USER
 
     def test_action_hash_is_32_bytes_hex(self):
         resp = _make_mock_llm_response(action="HOLD", amount=0)

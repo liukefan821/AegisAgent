@@ -86,6 +86,25 @@ export interface HealthResponse {
   ollama_status: "ready" | "unreachable";
 }
 
+export interface AgentDecision {
+  action: "HOLD" | "TRANSFER" | string;
+  reasoning: string;
+  user: Address;
+  amount_wei: string;
+  target: Address;
+  nonce: number;
+  timestamp: number;
+  action_hash: Bytes32;
+  quote_hex: Hex;
+  quote_digest: Bytes32;
+  mr_enclave: Bytes32;
+  is_mock: boolean;
+  input_hash: Hex;
+  output_hash: Hex;
+  eth_usd_price: string;
+  chainlink_round_id: number;
+}
+
 // ────────────────────────────────────────────────────────────────────
 // On-chain decoded events (mirror docs/interfaces.md)
 // ────────────────────────────────────────────────────────────────────
@@ -123,6 +142,27 @@ export interface ResolvedAction {
   quote?: AttestationQuote;
   verified: boolean;
 }
+
+export type VaultActivityItem =
+  | {
+      kind: "deposit" | "withdraw";
+      user: Address;
+      amount: bigint;
+      timestamp: bigint;
+      block_number: bigint;
+      transaction_hash: Hex;
+    }
+  | {
+      kind: "action";
+      user: Address;
+      mr_enclave: Bytes32;
+      quote_digest: Bytes32;
+      amount: bigint;
+      timestamp: bigint;
+      block_number: bigint;
+      transaction_hash: Hex;
+      verified: boolean;
+    };
 
 export interface HookResult<T> {
   data: T | undefined;

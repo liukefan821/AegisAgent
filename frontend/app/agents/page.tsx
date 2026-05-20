@@ -38,7 +38,7 @@ export default function AgentsPage() {
   }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <div>
         <h1 className="text-xl font-medium">Agents</h1>
         <p className="text-sm text-muted-foreground">
@@ -51,10 +51,16 @@ export default function AgentsPage() {
         <CardHeader>
           <CardTitle className="text-lg">Registered Agents</CardTitle>
           <CardDescription>
-            Agent images verified by the on-chain Registry. Source:{" "}
-            <Badge variant="outline" className="ml-1">
-              {agents.source}
-            </Badge>
+            Agent images verified by the on-chain Registry.
+            {agents.source === "mock" ? (
+              <>
+                {" "}
+                Source:{" "}
+                <Badge variant="outline" className="ml-1">
+                  mock
+                </Badge>
+              </>
+            ) : null}
           </CardDescription>
         </CardHeader>
         <CardContent>

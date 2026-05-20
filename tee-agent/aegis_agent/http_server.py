@@ -23,14 +23,20 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Dict, Optional
 
 import httpx
+from dotenv import load_dotenv
 from eth_utils import keccak
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from aegis_agent.llm_client import configured_model, configured_provider, probe_llm
 from aegis_agent.quote_generator import AttestationQuote, HASH_SIZE
+
+load_dotenv()
+load_dotenv(".env.local", override=False)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +63,76 @@ class QuoteResponse(BaseModel):
     output_hash: str = Field(..., description="0x-prefixed report_data[32:64]")
     timestamp: int
     is_mock: bool
+
+
+_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+class DecisionRequest(BaseModel):
+    user: str = Field(..., description="0x-prefixed user wallet address")
+    balance_wei: int | str = Field(
+        ...,
+        description="Current vault balance in wei, preferably as a decimal string.",
+    )
+    nonce: int | str = Field(
+        ...,
+        description="Current AegisVault nonce, preferably as a decimal string.",
+    )
+    mock_price: Optional[str] = Field(
+        None,
+        description="Optional ETH/USD price override; if omitted, Chainlink is used when configured.",
+    )
+    demo_action: Optional[str] = Field(
+        None,
+        description='Optional demo override: "HOLD" or "TRANSFER". Bypasses only the AI choice.',
+    )
+    demo_transfer_bps: int = Field(
+        2500,
+        ge=0,
+        le=10000,
+        description="Basis points of vault balance to transfer for demo TRANSFER.",
+    )
+
+    @field_validator("user")
+    @classmethod
+    def validate_user_address(cls, v: str) -> str:
+        if not _ADDRESS_RE.match(v):
+            raise ValueError("user must be a 0x-prefixed 20-byte hex address")
+        return v
+
+
+class DecisionResponse(BaseModel):
+    action: str
+    reasoning: str
+    user: str
+    amount_wei: str
+    target: str
+    nonce: int
+    timestamp: int
+    action_hash: str
+    quote_hex: str
+    quote_digest: str
+    mr_enclave: str
+    is_mock: bool
+    input_hash: str
+    output_hash: str
+    eth_usd_price: str
+    chainlink_round_id: int
+
+
+def _parse_nonnegative_int(value: int | str, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a non-negative integer")
+
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"{field_name} must be a non-negative integer") from e
+
+    if parsed < 0:
+        raise ValueError(f"{field_name} must be a non-negative integer")
+
+    return parsed
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -138,16 +214,21 @@ def get_store() -> QuoteStore:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Ollama liveness probe
+# LLM liveness probe
 # ────────────────────────────────────────────────────────────────────────────
 
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+OLLAMA_MODEL = configured_model()
 ENCLAVE_IMAGE_HASH = os.getenv("ENCLAVE_IMAGE_HASH", "0x" + "00" * HASH_SIZE)
 
 
 def _probe_ollama(timeout: float = 2.0) -> str:
-    """Cheap GET on /api/tags — no model load, ~5ms when Ollama is up."""
+    """Backward-compatible probe used by tests and /health.
+
+    If LLM_PROVIDER=gemini, this checks the Gemini API/model instead of Ollama.
+    """
+    if configured_provider() == "gemini":
+        return probe_llm()
     try:
         with httpx.Client(timeout=timeout) as client:
             r = client.get(f"{OLLAMA_URL}/api/tags")
@@ -179,7 +260,7 @@ _FRONTEND_ORIGINS = os.getenv(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_FRONTEND_ORIGINS,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -239,4 +320,93 @@ def get_quote(digest: str) -> QuoteResponse:
         output_hash="0x" + output_hash_bytes.hex(),
         timestamp=quote.timestamp,
         is_mock=quote.is_mock,
+    )
+
+
+@app.post("/decisions", response_model=DecisionResponse)
+def create_decision(request: DecisionRequest) -> DecisionResponse:
+    """Run the full decision pipeline and store the generated quote.
+
+    The returned fields are the arguments needed by AegisVault.executeAction:
+        user, quote_hex, action_hash, amount_wei, target, timestamp
+
+    The quote is also saved in QuoteStore, so /quotes/{quote_digest} can be
+    queried immediately after this call.
+    """
+    if request.demo_action is not None and request.demo_action.upper() not in (
+        "HOLD",
+        "TRANSFER",
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail='demo_action must be "HOLD" or "TRANSFER"',
+        )
+
+    try:
+        balance_wei = _parse_nonnegative_int(request.balance_wei, "balance_wei")
+        nonce = _parse_nonnegative_int(request.nonce, "nonce")
+
+        from aegis_agent.chainlink_feed import ChainlinkFeed, ChainlinkFeedError
+        from aegis_agent.decision_engine import DecisionEngine
+        from aegis_agent.llm_client import create_llm_client
+        from aegis_agent.quote_generator import QuoteGenerator
+
+        chainlink = None
+        if request.mock_price is None and os.getenv("SEPOLIA_RPC_URL"):
+            try:
+                chainlink = ChainlinkFeed.from_env()
+            except ChainlinkFeedError as e:
+                logger.warning("Chainlink unavailable, falling back to mock price: %s", e)
+
+        mock_quote = os.getenv("AEGIS_MOCK_QUOTE", "true").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+        engine = DecisionEngine(
+            ollama=create_llm_client(),
+            quote_gen=QuoteGenerator(
+                mock=mock_quote,
+                mock_mr_enclave=os.getenv("MOCK_MR_ENCLAVE"),
+                dstack_socket=os.getenv("DSTACK_SOCKET_PATH"),
+            ),
+            chainlink=chainlink,
+        )
+        result = engine.decide(
+            user=request.user,
+            balance_wei=balance_wei,
+            nonce=nonce,
+            mock_price=request.mock_price,
+            demo_action=request.demo_action,
+            demo_transfer_bps=request.demo_transfer_bps,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("Invalid decision request: %s", e)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("Decision generation failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Decision generation failed",
+        ) from e
+
+    return DecisionResponse(
+        action=result.action,
+        reasoning=result.reasoning,
+        user=result.user,
+        amount_wei=str(result.amount_wei),
+        target=result.target,
+        nonce=result.nonce,
+        timestamp=result.timestamp,
+        action_hash=result.action_hash,
+        quote_hex=result.quote_hex,
+        quote_digest=result.quote_digest,
+        mr_enclave=result.mr_enclave,
+        is_mock=result.is_mock,
+        input_hash=result.input_hash,
+        output_hash=result.output_hash,
+        eth_usd_price=result.eth_usd_price,
+        chainlink_round_id=result.chainlink_round_id,
     )

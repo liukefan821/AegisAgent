@@ -6,6 +6,7 @@ import {
   safeWallet,
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
+import { http } from "wagmi";
 import { sepolia } from "wagmi/chains";
 
 coinbaseWallet.preference = {
@@ -23,10 +24,19 @@ const coinbaseOnlyWallet: typeof coinbaseWallet = (options) => {
   };
 };
 
+const sepoliaRpcUrl = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL;
+
 export const wagmiConfig = getDefaultConfig({
   appName: "AegisAgent",
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "",
   chains: [sepolia],
+  ...(sepoliaRpcUrl
+    ? {
+        transports: {
+          [sepolia.id]: http(sepoliaRpcUrl),
+        },
+      }
+    : {}),
   ssr: true,
   wallets: [
     {

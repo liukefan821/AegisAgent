@@ -5,13 +5,18 @@ import { CONTRACTS, vaultAbi, isConfigured } from "@/lib/contracts";
 import { IS_MOCK, MOCK_VAULT_BALANCE, MOCK_NONCE } from "@/lib/mocks";
 import type { Address, Bytes32, HookResult } from "@/lib/types";
 
+const LIVE_READ_REFETCH_MS = 12_000;
+
 export function useVaultBalance(user?: Address): HookResult<bigint> {
   const query = useReadContract({
     address: CONTRACTS.vault,
     abi: vaultAbi,
     functionName: "balanceOf",
     args: user ? [user] : undefined,
-    query: { enabled: !IS_MOCK && !!user && isConfigured(CONTRACTS.vault) },
+    query: {
+      enabled: !IS_MOCK && !!user && isConfigured(CONTRACTS.vault),
+      refetchInterval: LIVE_READ_REFETCH_MS,
+    },
   });
 
   if (IS_MOCK) {
@@ -41,7 +46,10 @@ export function useUserNonce(user?: Address): HookResult<bigint> {
     abi: vaultAbi,
     functionName: "nonceOf",
     args: user ? [user] : undefined,
-    query: { enabled: !IS_MOCK && !!user && isConfigured(CONTRACTS.vault) },
+    query: {
+      enabled: !IS_MOCK && !!user && isConfigured(CONTRACTS.vault),
+      refetchInterval: LIVE_READ_REFETCH_MS,
+    },
   });
 
   if (IS_MOCK) {
@@ -77,6 +85,7 @@ export function useAgentAuthorization(
     query: {
       enabled:
         !IS_MOCK && !!user && !!mrEnclave && isConfigured(CONTRACTS.vault),
+      refetchInterval: LIVE_READ_REFETCH_MS,
     },
   });
 
