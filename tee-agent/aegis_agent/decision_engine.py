@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-from eth_abi import encode as abi_encode
+from eth_abi.abi import encode as abi_encode
 from eth_utils import keccak
 
 from aegis_agent.chainlink_feed import ChainlinkFeed, PriceData

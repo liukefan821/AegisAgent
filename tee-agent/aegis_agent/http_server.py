@@ -23,13 +23,14 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Dict, Optional
 
 import httpx
 from dotenv import load_dotenv
 from eth_utils import keccak
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from aegis_agent.llm_client import configured_model, configured_provider, probe_llm
 from aegis_agent.quote_generator import AttestationQuote, HASH_SIZE
@@ -64,6 +65,9 @@ class QuoteResponse(BaseModel):
     is_mock: bool
 
 
+_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
 class DecisionRequest(BaseModel):
     user: str = Field(..., description="0x-prefixed user wallet address")
     balance_wei: int | str = Field(
@@ -88,6 +92,13 @@ class DecisionRequest(BaseModel):
         le=10000,
         description="Basis points of vault balance to transfer for demo TRANSFER.",
     )
+
+    @field_validator("user")
+    @classmethod
+    def validate_user_address(cls, v: str) -> str:
+        if not _ADDRESS_RE.match(v):
+            raise ValueError("user must be a 0x-prefixed 20-byte hex address")
+        return v
 
 
 class DecisionResponse(BaseModel):
