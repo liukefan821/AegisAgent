@@ -3,7 +3,7 @@ decision_engine.py — Step 6: End-to-end decision orchestrator for AegisAgent
 
 Orchestrates the full pipeline:
   1. Read ETH/USD price from Chainlink (Sepolia)
-  2. Query Ollama LLM for a DeFi risk assessment decision
+  2. Query LLM (Gemini or Ollama) for a DeFi risk assessment decision
   3. Compute actionHash = keccak256(abi.encode(user, amount, target, nonce, timestamp))
      matching AegisVault.executeAction() on-chain
   4. Generate TDX attestation quote with report_data = actionHash || output_hash
@@ -31,6 +31,7 @@ from aegis_agent.http_server import get_store
 from aegis_agent.llm_client import LLMClient, create_llm_client
 from aegis_agent.ollama_client import LLMResponse, OllamaClient
 from aegis_agent.quote_generator import AttestationQuote, QuoteGenerator
+from aegis_agent.swap_encoder import SwapParams, build_swap_params
 
 logger = logging.getLogger(__name__)
 
@@ -51,21 +52,30 @@ Evaluate market risk based on the ETH/USD price provided:
   TRANSFER 25% of vault balance to the emergency safe address.
 - HIGH risk (ETH price below $1800, or dropped more than 8%):
   TRANSFER 50% of vault balance to the emergency safe address.
+- PROFIT-TAKING opportunity (ETH price above $3200, strong uptrend):
+  SWAP 30% of vault ETH to USDC via Uniswap to lock in profits.
+- DIP-BUYING opportunity (ETH price below $1500, potential reversal):
+  SWAP is not applicable (vault holds ETH, not USDC). Use HOLD or TRANSFER.
 
 ## Safety Constraints
 
 - NEVER transfer to any address except the emergency safe address provided.
 - If emergency safe address is not provided, always HOLD.
 - amount_wei must not exceed the vault balance.
+- SWAP target is always the Uniswap Router (set automatically by the system).
 - When in doubt, HOLD.
 
 Respond ONLY with valid JSON (no markdown, no explanation outside JSON):
 {
-  "action": "HOLD" or "TRANSFER",
+  "action": "HOLD" or "TRANSFER" or "SWAP",
   "amount_wei": 0,
   "target": "emergency_safe_address_here",
   "reasoning": "brief risk assessment explanation"
-}"""
+}
+
+Note: For SWAP actions, the system will override "target" with the Uniswap
+Router address and encode the swap calldata automatically. You only need to
+specify the ETH amount_wei to swap."""
 
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
@@ -85,7 +95,7 @@ class DecisionResult:
         vault.executeAction(user, quote, actionHash, amount, target, timestamp)
     """
     # LLM decision
-    action: str                # "HOLD" or "TRANSFER"
+    action: str                # "HOLD", "TRANSFER", or "SWAP"
     reasoning: str
     # On-chain action parameters (match executeAction signature)
     user: str                  # checksummed address
@@ -105,6 +115,10 @@ class DecisionResult:
     # Price context
     eth_usd_price: str
     chainlink_round_id: int
+    # Swap extension (None for HOLD/TRANSFER)
+    swap_calldata: Optional[str] = None         # 0x-prefixed Uniswap calldata
+    swap_calldata_hash: Optional[str] = None    # 0x-prefixed keccak256(calldata)
+    swap_amount_out_min: Optional[int] = None   # minimum USDC output
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -178,6 +192,8 @@ class DecisionEngine:
             balance_wei: User's current vault balance in wei.
             nonce: Current on-chain nonce from AegisVault.nonceOf(user).
             mock_price: If set, skip Chainlink and use this as ETH/USD price.
+            demo_action: If set, bypass LLM and use this action deterministically.
+            demo_transfer_bps: Basis points for demo TRANSFER amount.
 
         Returns:
             DecisionResult with all fields for executeAction + audit.
@@ -205,7 +221,7 @@ class DecisionEngine:
             f"Vault balance: {balance_eth:.6f} ETH ({balance_wei} wei)\n"
             f"Current nonce: {nonce}\n"
             f"Emergency safe address: {emergency_safe}\n\n"
-            f"Assess market risk level and decide: HOLD or TRANSFER?"
+            f"Assess market risk level and decide: HOLD, TRANSFER, or SWAP?"
         )
 
         if demo_action is not None:
@@ -246,14 +262,46 @@ class DecisionEngine:
         action = parsed.get("action", "HOLD").upper()
         amount_wei = int(parsed.get("amount_wei", 0))
         target = parsed.get("target", ZERO_ADDRESS)
+        if target.startswith("0x") and len(target) < 42:
+            target = target[:2] + target[2:].zfill(40)
         reasoning = parsed.get("reasoning", "")
 
-        # Safety: clamp invalid decisions
-        if action != "TRANSFER":
-            action = "HOLD"
-            amount_wei = 0
-            target = ZERO_ADDRESS
-        else:
+        # ── 3b. Swap calldata (extension) ────────────────────────────────
+        swap_calldata: Optional[str] = None
+        swap_calldata_hash: Optional[str] = None
+        swap_amount_out_min: Optional[int] = None
+
+        if action == "SWAP":
+            # Clamp amount
+            if amount_wei <= 0:
+                amount_wei = int(balance_wei * 0.3)  # default 30%
+                logger.info("SWAP: LLM gave no amount, defaulting to 30%% = %d wei", amount_wei)
+            if amount_wei > balance_wei:
+                logger.warning("SWAP: clamping %d -> %d (balance)", amount_wei, balance_wei)
+                amount_wei = balance_wei
+
+            timestamp = int(time.time()) + ACTION_EXPIRY_SECONDS
+            try:
+                eth_price_float = float(price_str)
+            except ValueError:
+                eth_price_float = 2500.0
+
+            swap_params = build_swap_params(
+                user=user,
+                amount_wei=amount_wei,
+                eth_price_usd=eth_price_float,
+                deadline=timestamp,
+            )
+            target = swap_params.target          # Uniswap Router
+            swap_calldata = swap_params.calldata
+            swap_calldata_hash = swap_params.calldata_hash
+            swap_amount_out_min = swap_params.amount_out_min
+            logger.info(
+                "SWAP: %d wei ETH -> min %d USDC, router=%s",
+                amount_wei, swap_amount_out_min, target[:10],
+            )
+
+        elif action == "TRANSFER":
             # The LLM may decide whether to transfer and how much, but the
             # destination is fixed by deterministic code. Never trust a model
             # response to choose where funds are sent.
@@ -264,17 +312,25 @@ class DecisionEngine:
                     emergency_safe,
                 )
             target = emergency_safe
-        if amount_wei < 0:
+            if amount_wei < 0:
+                amount_wei = 0
+            if amount_wei > balance_wei:
+                logger.warning(
+                    "LLM requested %d wei but balance is %d, clamping",
+                    amount_wei, balance_wei,
+                )
+                amount_wei = balance_wei
+
+        else:
+            # Default to HOLD for any unrecognised action
+            action = "HOLD"
             amount_wei = 0
-        if amount_wei > balance_wei:
-            logger.warning(
-                "LLM requested %d wei but balance is %d, clamping",
-                amount_wei, balance_wei,
-            )
-            amount_wei = balance_wei
+            target = ZERO_ADDRESS
 
         # ── 4. Compute actionHash (matches Vault contract) ──────────────
-        timestamp = int(time.time()) + ACTION_EXPIRY_SECONDS
+        if action != "SWAP":
+            timestamp = int(time.time()) + ACTION_EXPIRY_SECONDS
+
         action_hash_bytes = compute_action_hash(
             user, amount_wei, target, nonce, timestamp,
         )
@@ -317,6 +373,9 @@ class DecisionEngine:
             output_hash=llm_result.output_hash,
             eth_usd_price=price_str,
             chainlink_round_id=round_id,
+            swap_calldata=swap_calldata,
+            swap_calldata_hash=swap_calldata_hash,
+            swap_amount_out_min=swap_amount_out_min,
         )
 
     def _build_demo_decision(
@@ -331,7 +390,6 @@ class DecisionEngine:
         normalized = action.upper()
         if normalized not in {"HOLD", "TRANSFER"}:
             raise ValueError("demo_action must be HOLD or TRANSFER")
-
         if normalized == "HOLD":
             return {
                 "action": "HOLD",
@@ -339,7 +397,6 @@ class DecisionEngine:
                 "target": ZERO_ADDRESS,
                 "reasoning": "Demo override: keep funds in the vault.",
             }
-
         bps = max(0, min(transfer_bps, 10_000))
         amount_wei = balance_wei * bps // 10_000
         return {
@@ -405,7 +462,7 @@ if __name__ == "__main__":
         user=demo_user,
         balance_wei=demo_balance,
         nonce=demo_nonce,
-        mock_price="2500.00",
+        mock_price="3500.00",
     )
 
     print(f"\n{'=' * 70}")
@@ -421,6 +478,10 @@ if __name__ == "__main__":
     print(f"Input Hash:    {result.input_hash}")
     print(f"Output Hash:   {result.output_hash}")
     print(f"ETH/USD:       ${result.eth_usd_price}")
+    if result.swap_calldata:
+        print(f"Swap Calldata: {result.swap_calldata[:40]}...")
+        print(f"Swap Hash:     {result.swap_calldata_hash}")
+        print(f"Min USDC Out:  {result.swap_amount_out_min}")
     print(f"{'=' * 70}")
     print("\nThis DecisionResult can be passed to AegisVault.executeAction():")
     print(f"  vault.executeAction(")
