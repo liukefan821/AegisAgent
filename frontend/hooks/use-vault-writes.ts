@@ -5,7 +5,13 @@ import { parseEther } from "viem";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { CONTRACTS, isConfigured, vaultAbi } from "@/lib/contracts";
 import { IS_MOCK } from "@/lib/mocks";
-import type { Bytes32, Hex, WriteHookResult } from "@/lib/types";
+import type {
+  Address,
+  AgentDecision,
+  Bytes32,
+  Hex,
+  WriteHookResult,
+} from "@/lib/types";
 
 type MockWriteState = {
   isPending: boolean;
@@ -19,7 +25,8 @@ type VaultFunctionName =
   | "deposit"
   | "withdraw"
   | "authorizeAgent"
-  | "emergencyStop";
+  | "emergencyStop"
+  | "executeAction";
 
 type VaultTx = {
   args?: readonly unknown[];
@@ -64,6 +71,49 @@ function assertBytes32(value: Bytes32): void {
   if (!BYTES32_RE.test(value)) {
     throw new Error("MR_ENCLAVE must be a 32-byte hex value.");
   }
+}
+
+function assertAddress(value: Address): void {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
+    throw new Error("Address must be a 20-byte hex value.");
+  }
+}
+
+function assertHex(value: Hex, name: string): void {
+  if (!/^0x[0-9a-fA-F]+$/.test(value)) {
+    throw new Error(`${name} must be a hex value.`);
+  }
+}
+
+function buildExecuteActionArgs(decision: AgentDecision) {
+  assertAddress(decision.user);
+  assertAddress(decision.target);
+  assertBytes32(decision.action_hash);
+  assertHex(decision.quote_hex, "Quote");
+
+  let amount: bigint;
+  try {
+    amount = BigInt(decision.amount_wei);
+  } catch {
+    throw new Error("Decision amount is invalid.");
+  }
+
+  if (!decision.amount_wei || amount < 0n) {
+    throw new Error("Decision amount is invalid.");
+  }
+
+  if (decision.timestamp <= 0) {
+    throw new Error("Decision timestamp is invalid.");
+  }
+
+  return [
+    decision.user,
+    decision.quote_hex,
+    decision.action_hash,
+    amount,
+    decision.target,
+    BigInt(decision.timestamp),
+  ] as const;
 }
 
 function fakeTxHash(): Hex {
@@ -327,6 +377,41 @@ export function useEmergencyStop(): WriteHookResult {
       args: [],
     }));
   }, [mock, submitLive]);
+
+  if (IS_MOCK) {
+    return {
+      submit,
+      isPending: mock.state.isPending,
+      isConfirming: mock.state.isConfirming,
+      isSuccess: mock.state.isSuccess,
+      isError: !!mock.state.error,
+      txHash: mock.state.txHash,
+      error: mock.state.error,
+      reset,
+    };
+  }
+
+  return { ...liveResult, submit };
+}
+
+export function useExecuteAction(): WriteHookResult<[decision: AgentDecision]> {
+  const { mock, submitLive, reset, liveResult } =
+    useVaultWriteBase("executeAction");
+
+  const submit = useCallback(
+    (decision: AgentDecision) => {
+      if (IS_MOCK) {
+        return mock.submit(() => {
+          buildExecuteActionArgs(decision);
+        });
+      }
+
+      return submitLive(() => ({
+        args: buildExecuteActionArgs(decision),
+      }));
+    },
+    [mock, submitLive]
+  );
 
   if (IS_MOCK) {
     return {

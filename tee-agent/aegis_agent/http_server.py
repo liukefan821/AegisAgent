@@ -26,11 +26,16 @@ import os
 from typing import Dict, Optional
 
 import httpx
+from dotenv import load_dotenv
 from eth_utils import keccak
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from aegis_agent.llm_client import configured_model, configured_provider, probe_llm
 from aegis_agent.quote_generator import AttestationQuote, HASH_SIZE
+
+load_dotenv()
+load_dotenv(".env.local", override=False)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +62,49 @@ class QuoteResponse(BaseModel):
     output_hash: str = Field(..., description="0x-prefixed report_data[32:64]")
     timestamp: int
     is_mock: bool
+
+
+class DecisionRequest(BaseModel):
+    user: str = Field(..., description="0x-prefixed user wallet address")
+    balance_wei: int = Field(..., ge=0, description="Current vault balance in wei")
+    nonce: int = Field(..., ge=0, description="Current AegisVault nonce for user")
+    mock_price: Optional[str] = Field(
+        None,
+        description="Optional ETH/USD price override; if omitted, Chainlink is used when configured.",
+    )
+    demo_action: Optional[str] = Field(
+        None,
+        description='Optional demo override: "HOLD" or "TRANSFER". Bypasses only the AI choice.',
+    )
+    demo_target: Optional[str] = Field(
+        None,
+        description="Optional safe target address for demo TRANSFER. Defaults to the user address.",
+    )
+    demo_transfer_bps: int = Field(
+        2500,
+        ge=0,
+        le=10000,
+        description="Basis points of vault balance to transfer for demo TRANSFER.",
+    )
+
+
+class DecisionResponse(BaseModel):
+    action: str
+    reasoning: str
+    user: str
+    amount_wei: str
+    target: str
+    nonce: int
+    timestamp: int
+    action_hash: str
+    quote_hex: str
+    quote_digest: str
+    mr_enclave: str
+    is_mock: bool
+    input_hash: str
+    output_hash: str
+    eth_usd_price: str
+    chainlink_round_id: int
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -138,16 +186,21 @@ def get_store() -> QuoteStore:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Ollama liveness probe
+# LLM liveness probe
 # ────────────────────────────────────────────────────────────────────────────
 
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+OLLAMA_MODEL = configured_model()
 ENCLAVE_IMAGE_HASH = os.getenv("ENCLAVE_IMAGE_HASH", "0x" + "00" * HASH_SIZE)
 
 
 def _probe_ollama(timeout: float = 2.0) -> str:
-    """Cheap GET on /api/tags — no model load, ~5ms when Ollama is up."""
+    """Backward-compatible probe used by tests and /health.
+
+    If LLM_PROVIDER=gemini, this checks the Gemini API/model instead of Ollama.
+    """
+    if configured_provider() == "gemini":
+        return probe_llm()
     try:
         with httpx.Client(timeout=timeout) as client:
             r = client.get(f"{OLLAMA_URL}/api/tags")
@@ -179,7 +232,7 @@ _FRONTEND_ORIGINS = os.getenv(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_FRONTEND_ORIGINS,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -239,4 +292,74 @@ def get_quote(digest: str) -> QuoteResponse:
         output_hash="0x" + output_hash_bytes.hex(),
         timestamp=quote.timestamp,
         is_mock=quote.is_mock,
+    )
+
+
+@app.post("/decisions", response_model=DecisionResponse)
+def create_decision(request: DecisionRequest) -> DecisionResponse:
+    """Run the full decision pipeline and store the generated quote.
+
+    The returned fields are the arguments needed by AegisVault.executeAction:
+        user, quote_hex, action_hash, amount_wei, target, timestamp
+
+    The quote is also saved in QuoteStore, so /quotes/{quote_digest} can be
+    queried immediately after this call.
+    """
+    try:
+        from aegis_agent.chainlink_feed import ChainlinkFeed, ChainlinkFeedError
+        from aegis_agent.decision_engine import DecisionEngine
+        from aegis_agent.llm_client import create_llm_client
+        from aegis_agent.quote_generator import QuoteGenerator
+
+        chainlink = None
+        if request.mock_price is None and os.getenv("SEPOLIA_RPC_URL"):
+            try:
+                chainlink = ChainlinkFeed.from_env()
+            except ChainlinkFeedError as e:
+                logger.warning("Chainlink unavailable, falling back to mock price: %s", e)
+
+        mock_quote = os.getenv("AEGIS_MOCK_QUOTE", "true").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+        engine = DecisionEngine(
+            ollama=create_llm_client(),
+            quote_gen=QuoteGenerator(
+                mock=mock_quote,
+                mock_mr_enclave=os.getenv("MOCK_MR_ENCLAVE"),
+                dstack_socket=os.getenv("DSTACK_SOCKET_PATH"),
+            ),
+            chainlink=chainlink,
+        )
+        result = engine.decide(
+            user=request.user,
+            balance_wei=request.balance_wei,
+            nonce=request.nonce,
+            mock_price=request.mock_price,
+            demo_action=request.demo_action,
+            demo_target=request.demo_target,
+            demo_transfer_bps=request.demo_transfer_bps,
+        )
+    except Exception as e:
+        logger.exception("Decision generation failed")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return DecisionResponse(
+        action=result.action,
+        reasoning=result.reasoning,
+        user=result.user,
+        amount_wei=str(result.amount_wei),
+        target=result.target,
+        nonce=result.nonce,
+        timestamp=result.timestamp,
+        action_hash=result.action_hash,
+        quote_hex=result.quote_hex,
+        quote_digest=result.quote_digest,
+        mr_enclave=result.mr_enclave,
+        is_mock=result.is_mock,
+        input_hash=result.input_hash,
+        output_hash=result.output_hash,
+        eth_usd_price=result.eth_usd_price,
+        chainlink_round_id=result.chainlink_round_id,
     )

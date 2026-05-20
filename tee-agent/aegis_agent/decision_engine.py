@@ -16,6 +16,8 @@ Project: AegisAgent (SC6107, NTU CCDS, 2026)
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -26,6 +28,7 @@ from eth_utils import keccak
 
 from aegis_agent.chainlink_feed import ChainlinkFeed, PriceData
 from aegis_agent.http_server import get_store
+from aegis_agent.llm_client import LLMClient, create_llm_client
 from aegis_agent.ollama_client import LLMResponse, OllamaClient
 from aegis_agent.quote_generator import AttestationQuote, QuoteGenerator
 
@@ -149,7 +152,7 @@ class DecisionEngine:
 
     def __init__(
         self,
-        ollama: OllamaClient,
+        ollama: LLMClient,
         quote_gen: QuoteGenerator,
         chainlink: Optional[ChainlinkFeed] = None,
     ) -> None:
@@ -165,6 +168,9 @@ class DecisionEngine:
         nonce: int,
         *,
         mock_price: Optional[str] = None,
+        demo_action: Optional[str] = None,
+        demo_target: Optional[str] = None,
+        demo_transfer_bps: int = 2500,
     ) -> DecisionResult:
         """Run the full decision pipeline.
 
@@ -203,35 +209,45 @@ class DecisionEngine:
             f"Assess market risk level and decide: HOLD or TRANSFER?"
         )
 
-        llm_result = self.ollama.generate(
-            prompt=prompt,
-            system=SYSTEM_PROMPT,
-            json_mode=True,
-            max_tokens=1024,
-            temperature=0.1,
-        )
-        logger.info(
-            "LLM responded in %dms (input_hash=%s...)",
-            llm_result.elapsed_ms,
-            llm_result.input_hash[:10],
-        )
+        if demo_action is not None:
+            parsed = self._build_demo_decision(
+                action=demo_action,
+                user=user,
+                balance_wei=balance_wei,
+                target=demo_target,
+                transfer_bps=demo_transfer_bps,
+            )
+            llm_result = self._build_demo_llm_response(prompt, parsed)
+            logger.info("Using demo decision override: %s", parsed["action"])
+        else:
+            llm_result = self.ollama.generate(
+                prompt=prompt,
+                system=SYSTEM_PROMPT,
+                json_mode=True,
+                max_tokens=1024,
+                temperature=0.1,
+            )
+            logger.info(
+                "LLM responded in %dms (input_hash=%s...)",
+                llm_result.elapsed_ms,
+                llm_result.input_hash[:10],
+            )
 
-        # ── 3. Parse LLM decision ───────────────────────────────────────
-        try:
-            parsed = OllamaClient.parse_json_response(llm_result.response)
-        except (ValueError, KeyError) as e:
-            logger.warning("LLM response unparseable (%s), defaulting to HOLD", e)
-            parsed = {
-                "action": "HOLD",
-                "amount_wei": 0,
-                "target": ZERO_ADDRESS,
-                "reasoning": "LLM parse error, defaulting to safe HOLD",
-            }
+            # ── 3. Parse LLM decision ───────────────────────────────────
+            try:
+                parsed = OllamaClient.parse_json_response(llm_result.response)
+            except (ValueError, KeyError) as e:
+                logger.warning("LLM response unparseable (%s), defaulting to HOLD", e)
+                parsed = {
+                    "action": "HOLD",
+                    "amount_wei": 0,
+                    "target": ZERO_ADDRESS,
+                    "reasoning": "LLM parse error, defaulting to safe HOLD",
+                }
 
         action = parsed.get("action", "HOLD").upper()
         amount_wei = int(parsed.get("amount_wei", 0))
         target = parsed.get("target", ZERO_ADDRESS)
-        if target.startswith("0x") and len(target) < 42: target = target[:2] + target[2:].zfill(40)
         reasoning = parsed.get("reasoning", "")
 
         # Safety: clamp invalid decisions
@@ -239,6 +255,17 @@ class DecisionEngine:
             action = "HOLD"
             amount_wei = 0
             target = ZERO_ADDRESS
+        else:
+            # The LLM may decide whether to transfer and how much, but the
+            # destination is fixed by deterministic code. Never trust a model
+            # response to choose where funds are sent.
+            if target.lower() != emergency_safe.lower():
+                logger.warning(
+                    "Ignoring LLM transfer target %s; using emergency safe %s",
+                    target,
+                    emergency_safe,
+                )
+            target = emergency_safe
         if amount_wei < 0:
             amount_wei = 0
         if amount_wei > balance_wei:
@@ -294,6 +321,60 @@ class DecisionEngine:
             chainlink_round_id=round_id,
         )
 
+    def _build_demo_decision(
+        self,
+        *,
+        action: str,
+        user: str,
+        balance_wei: int,
+        target: Optional[str],
+        transfer_bps: int,
+    ) -> dict:
+        """Build a deterministic demo decision without trusting prompt output."""
+        normalized = action.upper()
+        if normalized not in {"HOLD", "TRANSFER"}:
+            raise ValueError("demo_action must be HOLD or TRANSFER")
+
+        if normalized == "HOLD":
+            return {
+                "action": "HOLD",
+                "amount_wei": 0,
+                "target": ZERO_ADDRESS,
+                "reasoning": "Demo override: keep funds in the vault.",
+            }
+
+        safe_target = target or user
+        bps = max(0, min(transfer_bps, 10_000))
+        amount_wei = balance_wei * bps // 10_000
+        return {
+            "action": "TRANSFER",
+            "amount_wei": amount_wei,
+            "target": safe_target,
+            "reasoning": (
+                f"Demo override: transfer {bps / 100:.2f}% of the vault "
+                "balance to the configured safe wallet."
+            ),
+        }
+
+    def _build_demo_llm_response(self, prompt: str, parsed: dict) -> LLMResponse:
+        response = json.dumps(parsed, separators=(",", ":"), sort_keys=True)
+        canonical_input = (
+            f"SYSTEM:{SYSTEM_PROMPT}\n"
+            f"USER:{prompt}\n"
+            f"MODEL:{self.ollama.model}"
+        )
+        input_hash = hashlib.sha256(canonical_input.encode("utf-8")).hexdigest()
+        output_hash = hashlib.sha256(response.encode("utf-8")).hexdigest()
+        return LLMResponse(
+            model=self.ollama.model,
+            prompt=prompt,
+            response=response,
+            input_hash="0x" + input_hash,
+            output_hash="0x" + output_hash,
+            elapsed_ms=0,
+            eval_count=0,
+        )
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # CLI demo:  python -m aegis_agent.decision_engine
@@ -307,9 +388,9 @@ if __name__ == "__main__":
     print("AegisAgent — DecisionEngine end-to-end demo (mock mode)")
     print("=" * 70)
 
-    ollama = OllamaClient()
+    ollama = create_llm_client()
     if not ollama.health_check():
-        print("ERROR: Ollama not reachable. Run `ollama serve` first.")
+        print("ERROR: LLM provider is not reachable. Check tee-agent LLM env config.")
         sys.exit(1)
 
     quote_gen = QuoteGenerator(mock=True)

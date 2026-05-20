@@ -21,6 +21,11 @@ The frontend (Next.js, http://localhost:3000) polls:
 import logging
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+load_dotenv(".env.local", override=False)
+
 from aegis_agent.http_server import app  # uvicorn imports `app` from here
 from aegis_agent.quote_generator import QuoteGenerator
 
@@ -32,6 +37,10 @@ logging.basicConfig(
 # Initialise QuoteGenerator based on env var — decision_engine (Step 6)
 # imports this instance to generate quotes for each decision.
 _mock_quote = os.getenv("AEGIS_MOCK_QUOTE", "true").lower() in ("true", "1", "yes")
-quote_generator = QuoteGenerator(mock=_mock_quote, dstack_socket=os.getenv("DSTACK_SOCKET_PATH"))
+quote_generator = QuoteGenerator(
+    mock=_mock_quote,
+    mock_mr_enclave=os.getenv("MOCK_MR_ENCLAVE"),
+    dstack_socket=os.getenv("DSTACK_SOCKET_PATH"),
+)
 
 __all__ = ["app", "quote_generator"]
