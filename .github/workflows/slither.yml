@@ -1,0 +1,17 @@
+name: slither
+
+on: [push, pull_request]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4 
+      
+      - name: Install Slither
+        run: pip install slither-analyzer # Install security analysis tool
+      
+      - name: Run Slither
+        run: slither contracts/ # Analyze contracts in the contracts directory
+        continue-on-error: true # Key: Do not block CI due to warnings

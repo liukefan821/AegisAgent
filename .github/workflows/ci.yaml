@@ -1,0 +1,25 @@
+name: CI
+
+# Trigger conditions: when code is pushed to the repository, or when someone opens a Pull Request
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest # Use the latest Ubuntu virtual environment
+    steps:
+      - uses: actions/checkout@v3 # Check out your code into the virtual machine
+      - uses: actions/setup-node@v3 # Install Node.js environment
+        with: 
+          node-version: '18' # Team specified to use Node 18
+
+      - name: Install dependencies
+        run: npm install # Install dependencies
+        working-directory: contracts # Note: Must navigate to the contracts folder to execute
+
+      - name: Run hardhat test
+        run: npx hardhat test # Run unit tests
+        working-directory: contracts
+
+      - name: Run hardhat coverage
+        run: npx hardhat coverage # Run test coverage report
+        working-directory: contracts
