@@ -43,9 +43,13 @@ check unless the TEE agent deliberately chose `0x0`. Accepted as low risk.
 
 **Finding**: `block.timestamp` used for expiry comparison.
 
-**Mitigation**: Miners can manipulate `block.timestamp` by a few seconds. Our expiry
-window is 15 minutes (`ACTION_EXPIRY_SECONDS = 900`), making a small timestamp skew
-irrelevant. This is standard practice for time-locked transactions.
+**Mitigation**: Miners can manipulate `block.timestamp` by a few seconds. The
+contract enforces only `timestamp > block.timestamp`; the 15-minute expiry window
+(`ACTION_EXPIRY_SECONDS = 900`) is an off-chain tee-agent convention used when
+constructing signed actions. A small timestamp skew is irrelevant for that
+off-chain window, but a future contract revision could add an upper bound such as
+`timestamp <= block.timestamp + 900` if stricter on-chain expiry enforcement is
+required.
 
 ### INFORMATIONAL — solc-version
 

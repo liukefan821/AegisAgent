@@ -78,13 +78,17 @@ Subsequent registrations are cheaper if the array storage slot is already warm.
 
 ### Checks-Effects-Interactions Pattern
 
-All `require` checks execute before any state mutation or external call. This
-ensures failed transactions revert early, minimizing wasted gas.
+State mutations and ETH transfers happen only after the validation sequence
+passes. `executeAction` intentionally performs read-only external validation
+calls first (`verifier.verify()` and `registry.isRegistered()`), then checks user
+authorization and the action hash, and only then updates vault state before the
+final ETH transfer. This keeps the value-moving interaction at the end while
+preserving the attestation/registry validation flow.
 
 ### Minimal Storage Writes
 
-- `executeAction` writes exactly 3 storage slots per call (balance, nonce,
-  timestamp).
+- `executeAction` writes 3 business-state storage slots per call (balance,
+  nonce, timestamp), plus 2 `_status` writes from the reentrancy lock.
 - `deposit` and `withdraw` each write 1 storage slot.
 - No redundant storage reads — each mapping is read once.
 
