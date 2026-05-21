@@ -19,6 +19,7 @@ interface IAegisVerifier {
  * @title AegisVault
  * @notice A secure custody vault where funds can only be moved via TEE-verified AI instructions.
  * @dev This contract manages user balances, agent authorizations, and executes verified actions.
+ *      Uses a reentrancy lock to prevent cross-function reentrancy via low-level calls.
  */
 contract AegisVault {
     /// @notice Reference to the Agent Registry contract
@@ -32,6 +33,10 @@ contract AegisVault {
     mapping(address => uint256) private _nonces;
     mapping(address => bool) private _emergencyStopped;
 
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+    uint256 private _status;
+
     /// @dev Emitted when a user deposits ETH into the vault.
     event Deposited(address indexed user, uint256 amount);
     /// @dev Emitted when a user withdraws ETH from the vault.
@@ -43,6 +48,14 @@ contract AegisVault {
     /// @dev Emitted when a TEE agent successfully executes a verified action.
     event ActionExecuted(address indexed user, bytes32 indexed mrEnclave, bytes32 quoteDigest, uint256 amount, uint256 timestamp);
 
+    /// @dev Prevents reentrant calls to state-changing functions.
+    modifier nonReentrant() {
+        require(_status != _ENTERED, "ReentrancyGuard: reentrant call");
+        _status = _ENTERED;
+        _;
+        _status = _NOT_ENTERED;
+    }
+
     /**
      * @dev Initializes the vault with the addresses of the Registry and Verifier.
      * @param _registryAddress Address of the AegisRegistry contract.
@@ -51,6 +64,7 @@ contract AegisVault {
     constructor(address _registryAddress, address _verifierAddress) {
         registry = IAegisRegistry(_registryAddress);
         verifier = IAegisVerifier(_verifierAddress);
+        _status = _NOT_ENTERED;
     }
 
     // --- Read-Only Functions ---
@@ -96,12 +110,16 @@ contract AegisVault {
 
     /**
      * @notice Allows users to manually withdraw their funds from the vault.
+     * @dev Uses call instead of transfer to avoid the 2300 gas stipend limitation.
      * @param amount The amount of ETH to withdraw in wei.
      */
-    function withdraw(uint256 amount) external {
+    function withdraw(uint256 amount) external nonReentrant {
         require(_balances[msg.sender] >= amount, "Insufficient balance");
         _balances[msg.sender] -= amount;
-        payable(msg.sender).transfer(amount);
+
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        require(success, "ETH transfer failed");
+
         emit Withdrawn(msg.sender, amount);
     }
 
@@ -126,6 +144,7 @@ contract AegisVault {
     /**
      * @notice Executes a transaction decided by a verified TEE Agent autonomously.
      * @dev Validates the hardware quote, checks registration/authorization, and verifies the action hash.
+     *      Follows checks-effects-interactions pattern and uses nonReentrant guard.
      * @param user The address of the user whose funds are being managed.
      * @param quote The raw hardware attestation quote provided by the TEE.
      * @param actionHash The cryptographic hash of the intended action (user, amount, target, nonce, timestamp).
@@ -134,14 +153,14 @@ contract AegisVault {
      * @param timestamp The expiration deadline for this specific instruction.
      */
     function executeAction(
-        address user,            // 【新增】显式传入资产所有者（用户）的地址
+        address user,
         bytes calldata quote,
         bytes32 actionHash,
         uint256 amount,
         address target,
         uint256 timestamp
-    ) external {
-        // 1. Core security checks (将 msg.sender 全部替换为 user)
+    ) external nonReentrant {
+        // 1. Core security checks
         require(timestamp > block.timestamp, "Timestamp expired");
         require(!_emergencyStopped[user], "Emergency stop active");
         require(_balances[user] >= amount, "Insufficient balance");
@@ -158,12 +177,12 @@ contract AegisVault {
         bytes32 expectedHash = keccak256(abi.encode(user, amount, target, _nonces[user], timestamp));
         require(actionHash == expectedHash, "Hash mismatch");
 
-        // 5. Execute business logic: update state and transfer funds
+        // 5. Effects: update state before external call (checks-effects-interactions)
         _balances[user] -= amount;
         _nonces[user] += 1;
         _lastActionTimestamp[user] = block.timestamp;
-        
-        // Low-level call to handle the transfer
+
+        // 6. Interaction: external call after all state updates
         (bool success, ) = payable(target).call{value: amount}("");
         require(success, "Transfer failed");
 

@@ -240,4 +240,115 @@ describe("AegisAgent Smart Contract Logic & Security Tests", function () {
       ]),
     ).to.be.rejectedWith("Hash mismatch");
   });
+
+  // ─── Additional branch coverage tests ────────────────────────────────
+
+  it("[Security] Emergency Stop: executeAction should fail when user has triggered emergency stop", async function () {
+    const { reg, vaultAsUser, vaultAsAgent, user } = await deployAegis();
+    const mrEnclave = padHex("0x01", { size: 32 });
+    await reg.write.registerAgent([mrEnclave]);
+    await vaultAsUser.write.authorizeAgent([mrEnclave]);
+    await vaultAsUser.write.deposit({ value: parseEther("1") });
+    await vaultAsUser.write.emergencyStop();
+
+    const actionHash = keccak256(
+      encodeAbiParameters(
+        parseAbiParameters("address, uint256, address, uint256, uint256"),
+        [user.account.address, parseEther("0.1"), user.account.address, 0n, 2000000000n],
+      ),
+    );
+
+    await expect(
+      vaultAsAgent.write.executeAction([
+        user.account.address,
+        "0x1234",
+        actionHash,
+        parseEther("0.1"),
+        user.account.address,
+        2000000000n,
+      ]),
+    ).to.be.rejectedWith("Emergency stop active");
+  });
+
+  it("[Security] Authorization: executeAction should fail when agent is not authorized by user", async function () {
+    const { reg, vaultAsUser, vaultAsAgent, user } = await deployAegis();
+    const mrEnclave = padHex("0x01", { size: 32 });
+    await reg.write.registerAgent([mrEnclave]);
+    // Deliberately NOT authorizing the agent
+    await vaultAsUser.write.deposit({ value: parseEther("1") });
+
+    const actionHash = keccak256(
+      encodeAbiParameters(
+        parseAbiParameters("address, uint256, address, uint256, uint256"),
+        [user.account.address, parseEther("0.1"), user.account.address, 0n, 2000000000n],
+      ),
+    );
+
+    await expect(
+      vaultAsAgent.write.executeAction([
+        user.account.address,
+        "0x1234",
+        actionHash,
+        parseEther("0.1"),
+        user.account.address,
+        2000000000n,
+      ]),
+    ).to.be.rejectedWith("User has not authorized this agent");
+  });
+
+  it("[Security] Registry: executeAction should fail when agent image is not registered", async function () {
+    const { vaultAsUser, vaultAsAgent, user } = await deployAegis();
+    const mrEnclave = padHex("0x01", { size: 32 });
+    // Register nothing — mrEnclave from MockAutomata (bytes32(1)) won't be in registry
+    await vaultAsUser.write.authorizeAgent([mrEnclave]);
+    await vaultAsUser.write.deposit({ value: parseEther("1") });
+
+    const actionHash = keccak256(
+      encodeAbiParameters(
+        parseAbiParameters("address, uint256, address, uint256, uint256"),
+        [user.account.address, parseEther("0.1"), user.account.address, 0n, 2000000000n],
+      ),
+    );
+
+    await expect(
+      vaultAsAgent.write.executeAction([
+        user.account.address,
+        "0x1234",
+        actionHash,
+        parseEther("0.1"),
+        user.account.address,
+        2000000000n,
+      ]),
+    ).to.be.rejectedWith("Agent image not registered");
+  });
+
+  it("[Functional] Registry: getRegisteredAgents should return all registered hashes", async function () {
+    const { reg } = await deployAegis();
+    const mr1 = padHex("0x01", { size: 32 });
+    const mr2 = padHex("0x02", { size: 32 });
+    await reg.write.registerAgent([mr1]);
+    await reg.write.registerAgent([mr2]);
+
+    const agents = await reg.read.getRegisteredAgents();
+    expect(agents.length).to.equal(2);
+    expect(agents[0].toLowerCase()).to.equal(mr1.toLowerCase());
+    expect(agents[1].toLowerCase()).to.equal(mr2.toLowerCase());
+  });
+
+  it("[Security] Registry: duplicate registration should fail", async function () {
+    const { reg } = await deployAegis();
+    const mrEnclave = padHex("0x01", { size: 32 });
+    await reg.write.registerAgent([mrEnclave]);
+    await expect(reg.write.registerAgent([mrEnclave])).to.be.rejectedWith(
+      "Agent already registered",
+    );
+  });
+
+  it("[Functional] Withdraw should fail when amount exceeds balance", async function () {
+    const { vaultAsUser } = await deployAegis();
+    await vaultAsUser.write.deposit({ value: parseEther("0.5") });
+    await expect(
+      vaultAsUser.write.withdraw([parseEther("1")]),
+    ).to.be.rejectedWith("Insufficient balance");
+  });
 });
