@@ -21,5 +21,5 @@ jobs:
         working-directory: contracts
 
       - name: Run hardhat coverage
-        run: npx hardhat coverage # Run test coverage report
+        run: npm run coverage # Run coverage with SOLIDITY_COVERAGE=true for hardhat-viem
         working-directory: contracts
