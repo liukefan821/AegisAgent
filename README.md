@@ -3,7 +3,7 @@
 > **TEE-Verified Autonomous DeFi Agent on Ethereum**
 > Don't trust the agent. Verify the silicon.
 
-**Course**: SC6107 — Blockchain Technology · NTU CCDS
+**Course**: SC6107 — Blockchain Technology · NTU CCTF
 **Group**: 1
 **Status**: Active development (Apr 2026 – May 23, 2026)
 
