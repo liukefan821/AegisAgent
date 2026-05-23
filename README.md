@@ -138,6 +138,14 @@ user wallet.
   on-chain Activity events still appear, but quote detail lookup may return
   `Quote not found`.
 
+## AI Tools Used
+
+AI tools, including Claude and ChatGPT, were used to assist with bug fixing,
+test coverage improvements, documentation drafting, and presentation
+preparation. All submitted code was reviewed, modified where necessary, and
+tested by the contributor whose GitHub account authored the commits. The
+contributor takes responsibility for the final implementation.
+
 ## License
 
 MIT — see LICENSE
