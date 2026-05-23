@@ -180,7 +180,7 @@ function countActiveFilters(filters: ActivityFilters): number {
   return count;
 }
 
-function amountDirection(item: VaultActivityItem): "+" | "-" | "neutral" {
+function amountDirection(item: VaultActivityItem): "+" | "-" {
   if (item.kind === "deposit") {
     return "+";
   }
@@ -188,7 +188,7 @@ function amountDirection(item: VaultActivityItem): "+" | "-" | "neutral" {
     return "-";
   }
   if (item.amount === 0n) {
-    return "neutral";
+    return "+";
   }
   return "-";
 }
@@ -490,16 +490,12 @@ function activityAmount(item: VaultActivityItem): {
     };
   }
 
-  if (item.amount === 0n) {
-    return {
-      label: `${formatEth(item.amount)} Sepolia ETH`,
-      className: "text-muted-foreground",
-    };
-  }
-
   return {
-    label: `-${formatEth(item.amount)} Sepolia ETH`,
-    className: "text-red-700 dark:text-red-300",
+    label: `${item.amount === 0n ? "+" : "-"}${formatEth(item.amount)} Sepolia ETH`,
+    className:
+      item.amount === 0n
+        ? "text-emerald-700 dark:text-emerald-300"
+        : "text-red-700 dark:text-red-300",
   };
 }
 
